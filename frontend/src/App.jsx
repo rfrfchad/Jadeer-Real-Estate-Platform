@@ -1,6 +1,7 @@
 
 import { useState } from 'react'
 import './App.css'
+import AgentDashboard from './AgentDashboard'
 
 function JadeerMark({ className = '' }) {
   return (
@@ -22,10 +23,15 @@ function App() {
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showDashboard, setShowDashboard] = useState(true)
 
   function handleSubmit(event) {
     event.preventDefault()
     alert('Login is not connected yet. Authentication will be added later.')
+  }
+
+  if (showDashboard) {
+    return <AgentDashboard />
   }
 
   return (
@@ -34,21 +40,16 @@ function App() {
 
       <header className="page-header">
         <a className="brand" href="/" aria-label="Jadeer home">
-          
-          <span className="brand-name">Jadeer</span>
-          <span className="brand-arabic" lang="ar" dir="rtl">
-            جــــــــــدير
-          </span>
+          <span className="brand-name">Jadeer | جــــــــدير</span>
+
           <span className="brand-tagline" lang="ar" dir="rtl">
-            للتسويق والاستثمار العقاري
+            لــلــتـــــــســــــويــــــــــــــــــــق والاســتــثـــــــــــــــــــمــــار الــعـــقـــــــــــــاري
           </span>
         </a>
 
         <div className="brand-promise">
           <span>BETTER PROPERTIES</span>
           <span>A BRIGHTER FUTURE</span>
-
-          
 
           <button
             className="theme-toggle"
