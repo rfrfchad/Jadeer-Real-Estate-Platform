@@ -68,6 +68,16 @@ const pages = {
 
   },
 
+  addProperty: {
+
+    label: 'إضافة عقار',
+
+    icon: '＋',
+
+    description: 'أرسل طلب إضافة شقة أو أرض لمراجعة الإدارة واعتمادها.',
+
+  },
+
   requests: {
 
     label: 'طلباتي',
@@ -253,11 +263,82 @@ const sampleProperties = [
     payment: 'كاش', developer: 'غير محددة',
   },
 ]
-export default function AgentDashboard() {
+
+const submittedPropertyToListing = (submission) => {
+  const data = submission.data || {}
+  const type = submission.type || 'apartment'
+  const rawZone = type === 'beitWatan' ? (data.regionLabel || 'بيت الوطن') : data.zone
+  const numericZone = String(rawZone ?? '').trim()
+  const filterZone = type === 'beitWatan'
+    ? 'beitWatan'
+    : ['14', '21', '22', '29'].includes(numericZone)
+      ? numericZone
+      : 'other'
+  const area = Number(data.area) || 0
+  const price = Number(data.totalPrice ?? data.amount) || 0
+  const finishCategory = type === 'apartment'
+    ? (data.finish === 'نص تشطيب' ? 'نص تشطيب' : data.finish === 'سوبر لوكس' ? 'سوبر لوكس' : data.finish === 'طوب' ? 'طوب' : 'غير ذلك')
+    : 'غير ذلك'
+
+  return {
+    id: `submitted-${submission.id}`,
+    submissionId: submission.id,
+    type,
+    typeLabel: type === 'apartment' ? 'شقة' : type === 'land' ? 'أرض' : 'أرض بيت الوطن',
+    zone: rawZone,
+    zoneFilter: filterZone,
+    regionLabel: type === 'beitWatan' ? (data.regionLabel || 'بيت الوطن') : '',
+    building: data.pieceNumber || '',
+    floor: data.floor || '',
+    area,
+    facing: data.facing || '',
+    finish: data.finish || data.landStatus || '',
+    finishCategory,
+    facade: data.facadeFinish || '',
+    features: data.features || '',
+    basement: data.basement || 'غير محدد',
+    basementShare: data.basementShare ?? '',
+    elevator: data.elevator || 'غير محدد',
+    elevatorShare: data.elevatorShare ?? '',
+    meterPrice: type === 'apartment' && area > 0 ? Math.round(price / area) : 0,
+    price,
+    payment: data.paymentNotes || data.notes || '',
+    developer: data.developer || 'غير محددة',
+    deadline: data.deadline || '',
+    paidUsd: data.paidUsd ?? '',
+    landStatus: data.landStatus || '',
+    ownerName: data.ownerName || '',
+    ownerPhone: data.ownerPhone || '',
+  }
+}
+
+const displayZone = (value) => {
+  if (value === null || value === undefined || value === '') return '—'
+  const text = String(value)
+  return /^\d+(\.\d+)?$/.test(text) ? n(Number(text)) : text
+}
+
+const blankPropertyForm = () => ({
+  zone: '14', zoneOther: '', pieceNumber: '', floor: 'الأرضي', area: '', facing: 'أمامي يمين',
+  finish: 'نص تشطيب', finishOther: '', facadeFinish: 'خلصانة', facadeOther: '', features: '', basement: 'شامل بدروم', basementShare: '',
+  elevator: 'شامل أسانسير', elevatorShare: '', elevatorOther: '', totalPrice: '', ownerName: '', ownerPhone: '', developer: '', paymentNotes: '',
+  landStatus: 'خالصة', deadline: '', landFeatures: '', landAmount: '', landOwnerName: '', landOwnerPhone: '', landPaymentNotes: '',
+  regionType: 'الأكثر تميز', neighborhood: 'الأولى', neighborhoodSection: 'A', sector: 'N-A',
+  paidUsd: '', amount: '', beitFeatures: '', beitOwnerName: '', beitOwnerPhone: '', beitNotes: '',
+})
+
+export default function AgentDashboard({
+  theme = 'light',
+  setTheme = () => {},
+  ownerRequests = [],
+  setOwnerRequests = () => {},
+  ownerMessages = [],
+  propertySubmissionRequests = [],
+  onSubmitProperty = () => {},
+  onSwitchToAdmin = () => {},
+}) {
 
   const [activePage, setActivePage] = useState('dashboard')
-
-  const [theme, setTheme] = useState('light')
 
   const [sharesDone, setSharesDone] = useState('')
   const [propertySearch, setPropertySearch] = useState('')
@@ -267,14 +348,13 @@ export default function AgentDashboard() {
   const [propertyFacing, setPropertyFacing] = useState('all')
   const [propertyMinPrice, setPropertyMinPrice] = useState('')
   const [propertyMaxPrice, setPropertyMaxPrice] = useState('')
-  const [ownerRequests, setOwnerRequests] = useState([])
-  const [ownerMessages, setOwnerMessages] = useState([])
   const [requestProperty, setRequestProperty] = useState(null)
   const [ownerRequestNote, setOwnerRequestNote] = useState('')
-  const [reviewRequestId, setReviewRequestId] = useState(null)
-  const [reviewOwnerName, setReviewOwnerName] = useState('')
-  const [reviewOwnerPhone, setReviewOwnerPhone] = useState('')
-  const [reviewError, setReviewError] = useState('')
+  const [propertyType, setPropertyType] = useState('all')
+  const [newPropertyType, setNewPropertyType] = useState('apartment')
+  const [newPropertyForm, setNewPropertyForm] = useState(blankPropertyForm)
+  const [propertySubmitError, setPropertySubmitError] = useState('')
+  const [propertySubmitSuccess, setPropertySubmitSuccess] = useState('')
 
 
 
@@ -385,6 +465,104 @@ export default function AgentDashboard() {
     setActivePage(page)
   }
 
+  const updateNewPropertyField = (field, value) => {
+    setNewPropertyForm((current) => ({ ...current, [field]: value }))
+    setPropertySubmitError('')
+    setPropertySubmitSuccess('')
+  }
+
+  const handleNewPropertyTypeChange = (event) => {
+    const nextType = event.target.value
+    const blankForm = blankPropertyForm()
+    if (nextType === 'land') blankForm.zone = ''
+    setNewPropertyType(nextType)
+    setNewPropertyForm(blankForm)
+    setPropertySubmitError('')
+    setPropertySubmitSuccess('')
+  }
+
+  const handleNewPropertySubmit = (event) => {
+    event.preventDefault()
+    const form = newPropertyForm
+    const numeric = (value) => Number(String(value ?? '').replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/,/g, '').trim()) || 0
+    let data = {}
+
+    if (newPropertyType === 'apartment') {
+      const area = numeric(form.area)
+      const totalPrice = numeric(form.totalPrice)
+      const zoneValue = normalizePriceInput(form.zone === 'other' ? form.zoneOther.trim() : form.zone)
+      if (!zoneValue || !form.pieceNumber.trim() || area <= 0 || totalPrice <= 0 || !form.ownerPhone.trim()) {
+        setPropertySubmitError('راجع رقم القطعة والمساحة والسعر الإجمالي ورقم المالك.')
+        return
+      }
+      if (form.basement === 'حصة خارجية ملزمة الدفع' && numeric(form.basementShare) <= 0) {
+        setPropertySubmitError('أدخل قيمة حصة البدروم المطلوبة.')
+        return
+      }
+      if ((form.elevator === 'اتحاد ملاك' || form.elevator === 'تبع الشركة') && numeric(form.elevatorShare) <= 0) {
+        setPropertySubmitError('أدخل قيمة حصة الأسانسير المطلوبة.')
+        return
+      }
+      data = {
+        zone: zoneValue,
+        pieceNumber: form.pieceNumber.trim(), floor: form.floor, area, facing: form.facing,
+        finish: form.finish === 'غير ذلك' && form.finishOther.trim() ? `غير ذلك: ${form.finishOther.trim()}` : form.finish,
+        finishOther: form.finish === 'غير ذلك' ? form.finishOther.trim() : '',
+        facadeFinish: form.facadeFinish === 'غير ذلك' && form.facadeOther.trim() ? `غير ذلك: ${form.facadeOther.trim()}` : form.facadeFinish,
+        facadeOther: form.facadeFinish === 'غير ذلك' ? form.facadeOther.trim() : '', features: form.features.trim(),
+        basement: form.basement, basementShare: form.basement === 'حصة خارجية ملزمة الدفع' ? numeric(form.basementShare) : null,
+        elevator: form.elevator === 'غير ذلك' && form.elevatorOther.trim() ? `غير ذلك: ${form.elevatorOther.trim()}` : form.elevator,
+        elevatorOther: form.elevator === 'غير ذلك' ? form.elevatorOther.trim() : '',
+        elevatorShare: ['اتحاد ملاك', 'تبع الشركة'].includes(form.elevator) ? numeric(form.elevatorShare) : null,
+        totalPrice, meterPrice: Math.round(totalPrice / area), ownerName: form.ownerName.trim(),
+        ownerPhone: form.ownerPhone.trim(), developer: form.developer.trim(), paymentNotes: form.paymentNotes.trim(),
+      }
+    } else if (newPropertyType === 'land') {
+      const area = numeric(form.area)
+      const amount = numeric(form.landAmount)
+      const zoneValue = normalizePriceInput(form.zone.trim())
+      if (!zoneValue || !form.pieceNumber.trim() || area <= 0 || amount <= 0 || !form.landOwnerPhone.trim()) {
+        setPropertySubmitError('راجع المنطقة ورقم القطعة والمساحة والسعر الكامل ورقم المالك.')
+        return
+      }
+      data = {
+        zone: zoneValue, pieceNumber: form.pieceNumber.trim(), area, landStatus: form.landStatus,
+        deadline: form.deadline.trim(), features: form.landFeatures.trim(), amount,
+        ownerName: form.landOwnerName.trim(), ownerPhone: form.landOwnerPhone.trim(),
+        paymentNotes: form.landPaymentNotes.trim(),
+      }
+    } else {
+      const area = numeric(form.area)
+      const amount = numeric(form.amount)
+      if (!form.pieceNumber.trim() || area <= 0 || amount <= 0 || !form.beitOwnerPhone.trim()) {
+        setPropertySubmitError('راجع رقم القطعة والمساحة والمبلغ ورقم المالك.')
+        return
+      }
+      let regionLabel = form.regionType
+      if (form.regionType === 'الأكثر تميز') {
+        regionLabel += ` · المجاورة ${form.neighborhood}`
+        if (form.neighborhood !== 'الثانية') regionLabel += ` · ${form.neighborhoodSection}`
+      } else if (form.regionType === 'البنفسج') {
+        regionLabel += ` · القطاع ${form.sector}`
+      } else {
+        regionLabel += ` · القطاع ${form.sector}`
+      }
+      data = {
+        regionType: form.regionType, neighborhood: form.regionType === 'الأكثر تميز' ? form.neighborhood : '',
+        neighborhoodSection: form.regionType === 'الأكثر تميز' && form.neighborhood !== 'الثانية' ? form.neighborhoodSection : '',
+        sector: form.regionType !== 'الأكثر تميز' ? form.sector : '', regionLabel,
+        pieceNumber: form.pieceNumber.trim(), area, paidUsd: form.paidUsd === '' ? null : numeric(form.paidUsd),
+        amount, features: form.beitFeatures.trim(), ownerName: form.beitOwnerName.trim(),
+        ownerPhone: form.beitOwnerPhone.trim(), notes: form.beitNotes.trim(),
+      }
+    }
+
+    onSubmitProperty({ type: newPropertyType, data })
+    setNewPropertyForm(blankPropertyForm())
+    setPropertySubmitError('')
+    setPropertySubmitSuccess('تم إرسال طلب إضافة العقار إلى الإدارة بنجاح.')
+  }
+
   const getActiveOwnerRequest = (propertyId) =>
     ownerRequests.find(
       (request) =>
@@ -407,6 +585,9 @@ export default function AgentDashboard() {
       id: `owner-request-${Date.now()}`,
       propertyId: requestProperty.id,
       property: {
+        type: requestProperty.type || 'apartment',
+        typeLabel: requestProperty.typeLabel || 'شقة',
+        regionLabel: requestProperty.regionLabel || '',
         zone: requestProperty.zone,
         building: requestProperty.building,
         floor: requestProperty.floor,
@@ -424,65 +605,6 @@ export default function AgentDashboard() {
     setRequestProperty(null)
     setOwnerRequestNote('')
     setActivePage('requests')
-  }
-
-  const handleOpenAdminReview = (request) => {
-    setReviewRequestId(request.id)
-    setReviewOwnerName('')
-    setReviewOwnerPhone('')
-    setReviewError('')
-  }
-
-  const handleRejectOwnerRequest = (requestId) => {
-    setOwnerRequests((current) =>
-      current.map((request) =>
-        request.id === requestId
-          ? { ...request, status: 'rejected', reviewedAt: new Date().toLocaleString('ar-EG') }
-          : request
-      )
-    )
-  }
-
-  const handleApproveOwnerRequest = (event) => {
-    event.preventDefault()
-    const name = reviewOwnerName.trim()
-    const phone = reviewOwnerPhone.trim()
-
-    if (!name || !phone) {
-      setReviewError('أدخل اسم المالك ورقم هاتفه لإتمام الموافقة.')
-      return
-    }
-
-    const request = ownerRequests.find((item) => item.id === reviewRequestId)
-    if (!request) return
-
-    const reviewedAt = new Date().toLocaleString('ar-EG')
-    setOwnerRequests((current) =>
-      current.map((item) =>
-        item.id === reviewRequestId
-          ? { ...item, status: 'approved', ownerName: name, ownerPhone: phone, reviewedAt }
-          : item
-      )
-    )
-
-    const property = request.property
-    const newMessage = {
-      id: `owner-message-${Date.now()}`,
-      requestId: request.id,
-      ownerName: name,
-      ownerPhone: phone,
-      propertySummary: `مالك قطعة ${n(property.building)}، الدور ${property.floor}، ${property.facing}`,
-      zone: property.zone,
-      building: property.building,
-      floor: property.floor,
-      facing: property.facing,
-      area: property.area,
-      receivedAt: reviewedAt,
-    }
-    setOwnerMessages((current) => [newMessage, ...current.filter((item) => item.requestId !== request.id)])
-    setReviewRequestId(null)
-    setReviewError('')
-    setActivePage('messages')
   }
 
   const handleSharesChange = (event) => {
@@ -775,8 +897,15 @@ export default function AgentDashboard() {
 
   const renderProperties = () => {
     const searchValue = normalizeSearch(propertySearch)
-    const filteredProperties = sampleProperties.filter((property) => {
-      if (propertyZone !== 'all' && String(property.zone) !== propertyZone) return false
+    const approvedSubmittedProperties = propertySubmissionRequests
+      .filter((submission) => submission.status === 'approved')
+      .map(submittedPropertyToListing)
+    const allProperties = [...sampleProperties, ...approvedSubmittedProperties]
+    const filteredProperties = allProperties.filter((property) => {
+      const listingType = property.type || 'apartment'
+      if (propertyType !== 'all' && listingType !== propertyType) return false
+      const zoneFilterValue = property.zoneFilter || (['14', '21', '22', '29'].includes(String(property.zone)) ? String(property.zone) : 'other')
+      if (propertyZone !== 'all' && zoneFilterValue !== propertyZone) return false
       if (propertyFloor !== 'all' && property.floor !== propertyFloor) return false
       if (propertyFinish !== 'all' && property.finishCategory !== propertyFinish) return false
       if (propertyFacing !== 'all' && property.facing !== propertyFacing) return false
@@ -790,6 +919,7 @@ export default function AgentDashboard() {
 
       const searchableText = normalizeSearch([
         property.zone,
+        property.regionLabel,
         property.building,
         property.floor,
         property.area,
@@ -801,8 +931,12 @@ export default function AgentDashboard() {
         property.elevator,
         property.payment,
         property.developer,
+        property.landStatus,
+        property.deadline,
+        property.paidUsd,
         property.price,
         property.meterPrice,
+        property.typeLabel,
       ].join(' '))
 
       return searchableText.includes(searchValue)
@@ -810,6 +944,7 @@ export default function AgentDashboard() {
 
     const resetPropertyFilters = () => {
       setPropertySearch('')
+      setPropertyType('all')
       setPropertyZone('all')
       setPropertyFloor('all')
       setPropertyFinish('all')
@@ -825,7 +960,7 @@ export default function AgentDashboard() {
             <h1>العقارات المتاحة</h1>
             <p>ابحث في الشقق المتاحة حسب المنطقة والعمارة والدور والتشطيب.</p>
           </div>
-          <span className="agent-property-total">{n(filteredProperties.length)} من {n(sampleProperties.length)} شقة</span>
+          <span className="agent-property-total">{n(filteredProperties.length)} من {n(allProperties.length)} عقار</span>
         </div>
 
         <section className="agent-property-toolbar" aria-label="البحث والتصفية">
@@ -845,11 +980,25 @@ export default function AgentDashboard() {
 
           <div className="agent-property-filters">
             <label className="agent-property-filter">
+              <span className="agent-filter-label">نوع العقار</span>
+              <select value={propertyType} onChange={(event) => setPropertyType(event.target.value)}>
+                <option value="all">كل أنواع العقارات</option>
+                <option value="apartment">شقق</option>
+                <option value="land">أراضي</option>
+                <option value="beitWatan">أراضي بيت الوطن</option>
+              </select>
+            </label>
+
+            <label className="agent-property-filter">
               <span className="agent-filter-label">المنطقة</span>
               <select value={propertyZone} onChange={(event) => setPropertyZone(event.target.value)}>
                 <option value="all">كل المناطق</option>
                 <option value="14">المربع الذهبي - 14</option>
                 <option value="21">المربع الذهبي - 21</option>
+                <option value="22">المربع الذهبي - 22</option>
+                <option value="29">المربع الذهبي - 29</option>
+                <option value="other">منطقة أخرى</option>
+                <option value="beitWatan">بيت الوطن</option>
               </select>
             </label>
 
@@ -932,22 +1081,103 @@ export default function AgentDashboard() {
         ) : (
           <div className="agent-listing-grid">
             {filteredProperties.map((property) => (
+              property.type && property.type !== 'apartment' ? (
+                <article className="agent-card agent-listing-card" key={property.id}>
+                  <div className="agent-listing-map">
+                    {property.type === 'beitWatan' ? (
+                      <div className="agent-listing-map-placeholder">
+                        <span aria-hidden="true">⌖</span>
+                        <strong>خريطة بيت الوطن</strong>
+                        <small>ستُضاف الخريطة المناسبة لاحقًا</small>
+                      </div>
+                    ) : (
+                      <img
+                        src={`/maps/zone-${property.zone}-building-${property.building}.png`}
+                        alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)}`}
+                        loading="lazy"
+                        onError={(event) => {
+                          if (event.currentTarget.dataset.fallback !== 'true') {
+                            event.currentTarget.dataset.fallback = 'true'
+                            event.currentTarget.src = '/maps/golden-square-map.png'
+                          } else {
+                            event.currentTarget.style.display = 'none'
+                          }
+                        }}
+                      />
+                    )}
+                    <span className={`agent-map-zone zone-${property.zone}`}>{property.type === 'beitWatan' ? 'بيت الوطن' : `المنطقة ${displayZone(property.zone)}`}</span>
+                    <span className="agent-map-building">القطعة {displayZone(property.building)}</span>
+                    <span className="agent-map-caption">موقع العقار</span>
+                  </div>
+                  <div className="agent-listing-body">
+                    <div className="agent-listing-heading">
+                      <div>
+                        <p className="agent-listing-kicker">{property.typeLabel} · {property.regionLabel || `المنطقة ${displayZone(property.zone)}`}</p>
+                        <h2>{property.type === 'beitWatan' ? `أرض بيت الوطن ${n(property.area)} م²` : `أرض ${n(property.area)} م²`}</h2>
+                      </div>
+                      <span className="agent-listing-facing">{property.landStatus || property.sector || 'أرض'}</span>
+                    </div>
+                    <div className="agent-listing-tags">
+                      {property.deadline && <span>المهلة المتبقية: {property.deadline}</span>}
+                      {property.sector && <span>القطاع: {property.sector}</span>}
+                      {property.neighborhood && <span>المجاورة: {property.neighborhood}</span>}
+                    </div>
+                    <div className="agent-listing-price-row">
+                      <div>
+                        <span className="agent-listing-price-label">{property.type === 'land' ? 'سعر الأرض كامل' : 'المبلغ'}</span>
+                        <strong className="agent-listing-price">{formatPrice(property.price)}</strong>
+                      </div>
+                      {property.type === 'beitWatan' && property.paidUsd !== '' && property.paidUsd != null && (
+                        <div className="agent-listing-meter"><span>المدفوع بالدولار</span><strong dir="ltr">{n(property.paidUsd)} $</strong></div>
+                      )}
+                    </div>
+                    {property.features && <div className="agent-listing-feature"><span className="agent-listing-feature-icon" aria-hidden="true">✦</span><p>{property.features}</p></div>}
+                    <div className="agent-listing-inclusions">
+                      {property.type === 'land' && <div><span>حالة الأرض</span><strong>{property.landStatus || 'غير محددة'}</strong></div>}
+                      {property.type === 'land' && <div><span>المهلة المتبقية</span><strong>{property.deadline || 'غير محددة'}</strong></div>}
+                      {property.type === 'beitWatan' && <div><span>المنطقة</span><strong>{property.regionLabel || 'بيت الوطن'}</strong></div>}
+                      <div><span>المساحة</span><strong>{n(property.area)} م²</strong></div>
+                    </div>
+                    <div className="agent-listing-payment-details">
+                      <span>تفاصيل الدفع / ملاحظات</span>
+                      <p>{property.payment || 'لا توجد تفاصيل إضافية.'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="agent-owner-request-button"
+                      disabled={Boolean(getActiveOwnerRequest(property.id))}
+                      onClick={() => handleStartOwnerRequest(property)}
+                    >
+                      <span aria-hidden="true">✉</span>
+                      <span>{getActiveOwnerRequest(property.id)?.status === 'pending' ? 'طلب رقم المالك قيد المراجعة' : getActiveOwnerRequest(property.id)?.status === 'approved' ? 'تمت الموافقة — راجع الرسائل' : 'طلب رقم المالك'}</span>
+                    </button>
+                  </div>
+                </article>
+              ) : (
               <article className="agent-card agent-listing-card" key={property.id}>
                 <div className="agent-listing-map">
                   <img
                     src={`/maps/zone-${property.zone}-building-${property.building}.png`}
-                    alt={`خريطة توضيحية للمنطقة ${n(property.zone)} والعمارة ${n(property.building)} مع تحديد رقم العمارة`}
+                    alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والعمارة ${displayZone(property.building)} مع تحديد رقم العمارة`}
                     loading="lazy"
+                    onError={(event) => {
+                      if (event.currentTarget.dataset.fallback !== 'true') {
+                        event.currentTarget.dataset.fallback = 'true'
+                        event.currentTarget.src = '/maps/golden-square-map.png'
+                      } else {
+                        event.currentTarget.style.display = 'none'
+                      }
+                    }}
                   />
-                  <span className={`agent-map-zone zone-${property.zone}`}>المنطقة {n(property.zone)}</span>
-                  <span className="agent-map-building">العمارة {n(property.building)}</span>
+                  <span className={`agent-map-zone zone-${property.zone}`}>المنطقة {displayZone(property.zone)}</span>
+                  <span className="agent-map-building">العمارة {displayZone(property.building)}</span>
                   <span className="agent-map-caption">الموقع على الخريطة</span>
                 </div>
 
                 <div className="agent-listing-body">
                   <div className="agent-listing-heading">
                     <div>
-                      <p className="agent-listing-kicker">المربع الذهبي · المنطقة {n(property.zone)}</p>
+                      <p className="agent-listing-kicker">المربع الذهبي · المنطقة {displayZone(property.zone)}</p>
                       <h2>شقة {n(property.area)} م²</h2>
                     </div>
                     <span className="agent-listing-facing">{property.facing}</span>
@@ -1003,6 +1233,7 @@ export default function AgentDashboard() {
                   </button>
                 </div>
               </article>
+              )
             ))}
           </div>
         )}
@@ -1049,6 +1280,159 @@ export default function AgentDashboard() {
             </section>
           </div>
         )}
+      </div>
+    )
+  }
+
+  const renderAddProperty = () => {
+    const activeRequests = propertySubmissionRequests.filter((request) => request.agentName === 'مستخدم الوكيل')
+    const apartmentMeterPrice = Number(newPropertyForm.area) > 0 && Number(newPropertyForm.totalPrice) > 0
+      ? Math.round(Number(newPropertyForm.totalPrice) / Number(newPropertyForm.area))
+      : 0
+
+    const requestStatusLabel = (status) => status === 'approved' ? 'تمت الموافقة' : status === 'rejected' ? 'مرفوض' : 'بانتظار المراجعة'
+
+    return (
+      <div className="agent-add-property-page">
+        <div className="agent-page-header">
+          <div>
+            <h1>إضافة عقار جديد</h1>
+            <p>أدخل بيانات العقار كما هو متبع في المكتب، ثم أرسل الطلب إلى الإدارة للمراجعة.</p>
+          </div>
+        </div>
+
+        <div className="agent-property-type-picker" role="group" aria-label="نوع العقار">
+          <button type="button" className={newPropertyType === 'apartment' ? 'active' : ''} onClick={() => handleNewPropertyTypeChange({ target: { value: 'apartment' } })}>
+            <span aria-hidden="true">⌂</span><strong>شقة</strong><small>بيانات الشقة والتشطيب والخدمات</small>
+          </button>
+          <button type="button" className={newPropertyType === 'land' ? 'active' : ''} onClick={() => handleNewPropertyTypeChange({ target: { value: 'land' } })}>
+            <span aria-hidden="true">▦</span><strong>أرض عادية</strong><small>حالة الأرض والمهلة والسعر</small>
+          </button>
+          <button type="button" className={newPropertyType === 'beitWatan' ? 'active' : ''} onClick={() => handleNewPropertyTypeChange({ target: { value: 'beitWatan' } })}>
+            <span aria-hidden="true">◇</span><strong>أرض بيت الوطن</strong><small>المنطقة والمجاورة أو القطاع</small>
+          </button>
+        </div>
+
+        <form className="agent-property-form" onSubmit={handleNewPropertySubmit}>
+          {newPropertyType === 'apartment' && (
+            <>
+              <section className="agent-form-section">
+                <div className="agent-form-section-title"><span>١</span><div><h2>بيانات الشقة</h2><p>البيانات الأساسية وموقع الشقة.</p></div></div>
+                <div className="agent-form-grid">
+                  <label className="agent-form-field"><span>المنطقة <b>*</b></span>
+                    <select value={newPropertyForm.zone} onChange={(event) => updateNewPropertyField('zone', event.target.value)}>
+                      <option value="14">14</option><option value="21">21</option><option value="22">22</option><option value="29">29</option><option value="other">أخرى</option>
+                    </select>
+                  </label>
+                  {newPropertyForm.zone === 'other' && <label className="agent-form-field"><span>تحديد المنطقة <b>*</b></span><input required inputMode="numeric" value={newPropertyForm.zoneOther} onChange={(event) => updateNewPropertyField('zoneOther', normalizePriceInput(event.target.value))} placeholder="اكتب رقم المنطقة" /></label>}
+                  <label className="agent-form-field"><span>رقم القطعة <b>*</b></span><input required value={newPropertyForm.pieceNumber} onChange={(event) => updateNewPropertyField('pieceNumber', event.target.value)} placeholder="رقم القطعة" /></label>
+                  <label className="agent-form-field"><span>الدور <b>*</b></span><select required value={newPropertyForm.floor} onChange={(event) => updateNewPropertyField('floor', event.target.value)}><option value="الأرضي">أرضي</option><option value="الثاني">الثاني</option><option value="الثالث">الثالث</option><option value="الرابع">الرابع</option></select></label>
+                  <label className="agent-form-field"><span>المساحة (م²) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.area} onChange={(event) => updateNewPropertyField('area', event.target.value)} placeholder="المساحة بالمتر" /></label>
+                  <label className="agent-form-field"><span>الواجهة / اتجاه الشقة <b>*</b></span><select required value={newPropertyForm.facing} onChange={(event) => updateNewPropertyField('facing', event.target.value)}><option>أمامي يمين</option><option>أمامي يسار</option><option>أمامي ناصية</option><option>جانبي</option><option>خلفي</option><option>دبل فيس</option></select></label>
+                  <label className="agent-form-field"><span>تشطيب الشقة <b>*</b></span><select required value={newPropertyForm.finish} onChange={(event) => updateNewPropertyField('finish', event.target.value)}><option>طوب</option><option>نص تشطيب</option><option>سوبر لوكس</option><option>غير ذلك</option></select></label>
+                  {newPropertyForm.finish === 'غير ذلك' && <label className="agent-form-field"><span>توضيح التشطيب</span><input value={newPropertyForm.finishOther || ''} onChange={(event) => updateNewPropertyField('finishOther', event.target.value)} placeholder="اكتب نوع التشطيب" /></label>}
+                  <label className="agent-form-field"><span>تشطيب الواجهة <b>*</b></span><select required value={newPropertyForm.facadeFinish} onChange={(event) => updateNewPropertyField('facadeFinish', event.target.value)}><option>خلصانة</option><option>شغالين فيها</option><option>تحت الإنشاء</option><option>غير ذلك</option></select></label>
+                  {newPropertyForm.facadeFinish === 'غير ذلك' && <label className="agent-form-field"><span>توضيح حالة الواجهة</span><input value={newPropertyForm.facadeOther || ''} onChange={(event) => updateNewPropertyField('facadeOther', event.target.value)} placeholder="اكتب الحالة" /></label>}
+                  <label className="agent-form-field agent-form-field-wide"><span>المميزات</span><textarea rows="3" value={newPropertyForm.features} onChange={(event) => updateNewPropertyField('features', event.target.value)} placeholder="الموقع والمميزات وأي تفاصيل مهمة" /></label>
+                </div>
+              </section>
+
+              <section className="agent-form-section">
+                <div className="agent-form-section-title"><span>٢</span><div><h2>البدروم والأسانسير</h2><p>تظهر خانة المبلغ عند اختيار الحصة التي تحتاج إلى دفع.</p></div></div>
+                <div className="agent-form-grid">
+                  <label className="agent-form-field"><span>البدروم <b>*</b></span><select required value={newPropertyForm.basement} onChange={(event) => updateNewPropertyField('basement', event.target.value)}><option>شامل بدروم</option><option>حصة خارجية ملزمة الدفع</option><option>بدون بدروم</option></select></label>
+                  {newPropertyForm.basement === 'حصة خارجية ملزمة الدفع' && <label className="agent-form-field"><span>قيمة حصة البدروم (ج.م) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.basementShare} onChange={(event) => updateNewPropertyField('basementShare', event.target.value)} placeholder="قيمة الحصة" /></label>}
+                  <label className="agent-form-field"><span>الأسانسير <b>*</b></span><select required value={newPropertyForm.elevator} onChange={(event) => updateNewPropertyField('elevator', event.target.value)}><option>شامل أسانسير</option><option>اتحاد ملاك</option><option>تبع الشركة</option><option>غير ذلك</option></select></label>
+                  {['اتحاد ملاك', 'تبع الشركة'].includes(newPropertyForm.elevator) && <label className="agent-form-field"><span>قيمة حصة الأسانسير (ج.م) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.elevatorShare} onChange={(event) => updateNewPropertyField('elevatorShare', event.target.value)} placeholder="قيمة حصة الأسانسير" /></label>}
+                  {newPropertyForm.elevator === 'غير ذلك' && <label className="agent-form-field"><span>توضيح الأسانسير</span><input value={newPropertyForm.elevatorOther || ''} onChange={(event) => updateNewPropertyField('elevatorOther', event.target.value)} placeholder="اكتب التفاصيل" /></label>}
+                </div>
+              </section>
+
+              <section className="agent-form-section">
+                <div className="agent-form-section-title"><span>٣</span><div><h2>السعر وبيانات المالك</h2><p>يتم حساب سعر المتر تلقائيًا من السعر الإجمالي والمساحة.</p></div></div>
+                <div className="agent-form-grid">
+                  <label className="agent-form-field"><span>سعر الشقة كامل (ج.م) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.totalPrice} onChange={(event) => updateNewPropertyField('totalPrice', event.target.value)} placeholder="إجمالي السعر" /></label>
+                  <div className="agent-form-field"><span>سعر المتر المحسوب</span><div className="agent-form-calculated">{apartmentMeterPrice > 0 ? formatPrice(apartmentMeterPrice) : 'يُحسب بعد إدخال المساحة والسعر'}</div></div>
+                  <label className="agent-form-field"><span>اسم المالك (اختياري)</span><input value={newPropertyForm.ownerName} onChange={(event) => updateNewPropertyField('ownerName', event.target.value)} placeholder="اسم المالك" /></label>
+                  <label className="agent-form-field"><span>رقم المالك <b>*</b></span><input required type="tel" dir="ltr" value={newPropertyForm.ownerPhone} onChange={(event) => updateNewPropertyField('ownerPhone', event.target.value)} placeholder="رقم الهاتف" /></label>
+                  <label className="agent-form-field"><span>شركة التطوير (اختياري)</span><input value={newPropertyForm.developer} onChange={(event) => updateNewPropertyField('developer', event.target.value)} placeholder="اسم الشركة" /></label>
+                  <label className="agent-form-field agent-form-field-wide"><span>تفاصيل الدفع / ملاحظات</span><textarea rows="3" value={newPropertyForm.paymentNotes} onChange={(event) => updateNewPropertyField('paymentNotes', event.target.value)} placeholder="تفاصيل الدفع أو أي ملاحظات" /></label>
+                </div>
+              </section>
+            </>
+          )}
+
+          {newPropertyType === 'land' && (
+            <>
+              <section className="agent-form-section">
+                <div className="agent-form-section-title"><span>١</span><div><h2>بيانات الأرض</h2><p>أدخل المنطقة بالأرقام كما هو مستخدم في المكتب.</p></div></div>
+                <div className="agent-form-grid">
+                  <label className="agent-form-field"><span>المنطقة (رقم) <b>*</b></span><input required inputMode="numeric" value={newPropertyForm.zone} onChange={(event) => updateNewPropertyField('zone', normalizePriceInput(event.target.value))} placeholder="مثال: 14" /></label>
+                  <label className="agent-form-field"><span>رقم القطعة <b>*</b></span><input required value={newPropertyForm.pieceNumber} onChange={(event) => updateNewPropertyField('pieceNumber', event.target.value)} placeholder="رقم القطعة" /></label>
+                  <label className="agent-form-field"><span>المساحة (م²) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.area} onChange={(event) => updateNewPropertyField('area', event.target.value)} placeholder="المساحة" /></label>
+                  <label className="agent-form-field"><span>حالة الأرض <b>*</b></span><select required value={newPropertyForm.landStatus} onChange={(event) => updateNewPropertyField('landStatus', event.target.value)}><option>خالصة</option><option>خالصة وفيها رخصة</option><option>خالصة وفيها رخصة ومحفورة</option></select></label>
+                  <label className="agent-form-field"><span>المهلة المتبقية</span><input value={newPropertyForm.deadline} onChange={(event) => updateNewPropertyField('deadline', event.target.value)} placeholder="المدة المتبقية" /></label>
+                  <label className="agent-form-field"><span>سعر الأرض كامل (ج.م) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.landAmount} onChange={(event) => updateNewPropertyField('landAmount', event.target.value)} placeholder="المبلغ الكامل" /></label>
+                  <label className="agent-form-field"><span>اسم المالك</span><input value={newPropertyForm.landOwnerName} onChange={(event) => updateNewPropertyField('landOwnerName', event.target.value)} placeholder="اسم المالك" /></label>
+                  <label className="agent-form-field"><span>رقم المالك <b>*</b></span><input required type="tel" dir="ltr" value={newPropertyForm.landOwnerPhone} onChange={(event) => updateNewPropertyField('landOwnerPhone', event.target.value)} placeholder="رقم الهاتف" /></label>
+                  <label className="agent-form-field agent-form-field-wide"><span>المميزات</span><textarea rows="2" value={newPropertyForm.landFeatures} onChange={(event) => updateNewPropertyField('landFeatures', event.target.value)} placeholder="المميزات" /></label>
+                  <label className="agent-form-field agent-form-field-wide"><span>تفاصيل الدفع (إمكانية التقسيط على 3 شهور) / ملاحظات</span><textarea rows="3" value={newPropertyForm.landPaymentNotes} onChange={(event) => updateNewPropertyField('landPaymentNotes', event.target.value)} placeholder="تفاصيل الدفع أو ملاحظات" /></label>
+                </div>
+              </section>
+            </>
+          )}
+
+          {newPropertyType === 'beitWatan' && (
+            <section className="agent-form-section">
+              <div className="agent-form-section-title"><span>١</span><div><h2>بيانات أرض بيت الوطن</h2><p>اختيارات المنطقة الفرعية تتغير حسب نوع المنطقة.</p></div></div>
+              <div className="agent-form-grid">
+                <label className="agent-form-field"><span>المنطقة <b>*</b></span><select required value={newPropertyForm.regionType} onChange={(event) => { const regionType = event.target.value; setNewPropertyForm((current) => ({ ...current, regionType, neighborhood: 'الأولى', neighborhoodSection: 'A', sector: regionType === 'البنفسج' ? 'N-A' : 'E' })); setPropertySubmitError(''); setPropertySubmitSuccess('') }}><option>الأكثر تميز</option><option>البنفسج</option><option>المحور المركزي المرحلة 11</option></select></label>
+                {newPropertyForm.regionType === 'الأكثر تميز' && <>
+                  <label className="agent-form-field"><span>المجاورة <b>*</b></span><select value={newPropertyForm.neighborhood} onChange={(event) => updateNewPropertyField('neighborhood', event.target.value)}><option>الأولى</option><option>الثانية</option><option>الثالثة</option><option>الرابعة</option><option>الخامسة</option><option>السادسة</option></select></label>
+                  {newPropertyForm.neighborhood !== 'الثانية' && <label className="agent-form-field"><span>الاختيار A / B <b>*</b></span><select value={newPropertyForm.neighborhoodSection} onChange={(event) => updateNewPropertyField('neighborhoodSection', event.target.value)}><option value="A">A</option><option value="B">B</option></select></label>}
+                </>}
+                {newPropertyForm.regionType === 'البنفسج' && <label className="agent-form-field"><span>القطاع <b>*</b></span><select value={newPropertyForm.sector} onChange={(event) => updateNewPropertyField('sector', event.target.value)}>{['N-A','N-B','N-C','N-D','N-E','N-F','N-G'].map((sector) => <option key={sector}>{sector}</option>)}</select></label>}
+                {newPropertyForm.regionType === 'المحور المركزي المرحلة 11' && <label className="agent-form-field"><span>القطاع <b>*</b></span><select value={newPropertyForm.sector} onChange={(event) => updateNewPropertyField('sector', event.target.value)}>{['E','B','C','D'].map((sector) => <option key={sector}>{sector}</option>)}</select></label>}
+                <label className="agent-form-field"><span>رقم القطعة <b>*</b></span><input required value={newPropertyForm.pieceNumber} onChange={(event) => updateNewPropertyField('pieceNumber', event.target.value)} placeholder="رقم القطعة" /></label>
+                <label className="agent-form-field"><span>المساحة (م²) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.area} onChange={(event) => updateNewPropertyField('area', event.target.value)} placeholder="المساحة" /></label>
+                <label className="agent-form-field"><span>المدفوع بالدولار (اختياري)</span><input min="0" type="number" value={newPropertyForm.paidUsd} onChange={(event) => updateNewPropertyField('paidUsd', event.target.value)} placeholder="المبلغ المدفوع بالدولار" /></label>
+                <label className="agent-form-field"><span>المبلغ (ج.م) <b>*</b></span><input required min="1" type="number" value={newPropertyForm.amount} onChange={(event) => updateNewPropertyField('amount', event.target.value)} placeholder="المبلغ" /></label>
+                <label className="agent-form-field"><span>اسم المالك (اختياري)</span><input value={newPropertyForm.beitOwnerName} onChange={(event) => updateNewPropertyField('beitOwnerName', event.target.value)} placeholder="اسم المالك" /></label>
+                <label className="agent-form-field"><span>رقم المالك <b>*</b></span><input required type="tel" dir="ltr" value={newPropertyForm.beitOwnerPhone} onChange={(event) => updateNewPropertyField('beitOwnerPhone', event.target.value)} placeholder="رقم الهاتف" /></label>
+                <label className="agent-form-field agent-form-field-wide"><span>المميزات (اختياري)</span><textarea rows="2" value={newPropertyForm.beitFeatures} onChange={(event) => updateNewPropertyField('beitFeatures', event.target.value)} placeholder="المميزات" /></label>
+                <label className="agent-form-field agent-form-field-wide"><span>ملاحظات (اختياري)</span><textarea rows="3" value={newPropertyForm.beitNotes} onChange={(event) => updateNewPropertyField('beitNotes', event.target.value)} placeholder="ملاحظات" /></label>
+              </div>
+            </section>
+          )}
+
+          {propertySubmitError && <div className="agent-form-feedback error" role="alert">{propertySubmitError}</div>}
+          {propertySubmitSuccess && <div className="agent-form-feedback success" role="status">{propertySubmitSuccess}</div>}
+          <div className="agent-property-submit-row">
+            <p>سيظل العقار خارج قائمة العقارات المتاحة حتى تراجعه الإدارة وتوافق عليه.</p>
+            <button type="submit" className="agent-primary-button">إرسال طلب الإضافة للإدارة <span aria-hidden="true">←</span></button>
+          </div>
+        </form>
+
+        <section className="agent-submitted-properties-section">
+          <div className="agent-section-header"><div><h2>طلبات الإضافة التي أرسلتها</h2><p>تابع حالة كل طلب بعد مراجعته من الإدارة.</p></div><span className="agent-property-total">{n(activeRequests.length)} طلب</span></div>
+          {activeRequests.length === 0 ? (
+            <div className="agent-card agent-properties-empty"><span className="agent-empty-icon">▤</span><h2>لا توجد طلبات إضافة حتى الآن</h2><p>عند إرسال أول عقار سيظهر هنا بحالة المراجعة.</p></div>
+          ) : (
+            <div className="agent-property-submission-list">
+              {activeRequests.map((request) => {
+                const data = request.data || {}
+                const typeLabel = request.type === 'apartment' ? 'شقة' : request.type === 'land' ? 'أرض عادية' : 'أرض بيت الوطن'
+                const record = data.regionLabel || (data.zone ? `المنطقة ${data.zone}` : '')
+                return (
+                  <article className="agent-card agent-submitted-property-card" key={request.id}>
+                    <div><p className="agent-listing-kicker">{typeLabel} · {request.submittedAt}</p><h3>قطعة {data.pieceNumber || '—'} {record ? `— ${record}` : ''}</h3><p>المساحة: {data.area ? `${n(data.area)} م²` : '—'} · المبلغ: {formatPrice(data.totalPrice || data.landAmount || data.amount || 0)}</p>{request.rejectionReason && <p className="agent-submission-rejection">سبب الرفض: {request.rejectionReason}</p>}{request.reviewedAt && <small>تاريخ القرار: {request.reviewedAt}</small>}</div>
+                    <span className={`agent-status-label ${request.status === 'approved' ? 'completed' : request.status === 'rejected' ? 'rejected' : 'pending'}`}>{requestStatusLabel(request.status)}</span>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
       </div>
     )
   }
@@ -1423,16 +1807,11 @@ export default function AgentDashboard() {
         <span className="agent-property-total">{n(ownerRequests.length)} طلب</span>
       </div>
 
-      <div className="agent-demo-notice">
-        <strong>معاينة تجريبية لسير العمل</strong>
-        <p>لأن حساب الإدارة وقاعدة البيانات لم يُنشآ بعد، تظهر هنا أزرار تجريبية لمحاكاة قرار الإدارة. ستُنقل هذه الإجراءات إلى لوحة الإدارة لاحقًا.</p>
-      </div>
-
       {ownerRequests.length === 0 ? (
         <div className="agent-card agent-properties-empty">
           <span className="agent-empty-icon">▤</span>
           <h2>لا توجد طلبات حتى الآن</h2>
-          <p>من صفحة العقارات، اضغط «طلب رقم المالك» على الشقة المطلوبة.</p>
+          <p>من صفحة العقارات، اضغط «طلب رقم المالك» على العقار المطلوب.</p>
           <button type="button" className="agent-primary-button" onClick={() => navigateTo('properties')}>تصفّح العقارات</button>
         </div>
       ) : (
@@ -1442,7 +1821,7 @@ export default function AgentDashboard() {
               <div className="agent-owner-request-topline">
                 <div>
                   <p className="agent-listing-kicker">طلب رقم المالك · {request.submittedAt}</p>
-                  <h2>قطعة {n(request.property.building)} — المنطقة {n(request.property.zone)}</h2>
+                  <h2>قطعة {displayZone(request.property.building)} — المنطقة {displayZone(request.property.zone)}</h2>
                 </div>
                 <span className={`agent-status-label ${request.status === 'approved' ? 'completed' : request.status === 'pending' ? 'pending' : 'rejected'}`}>
                   {request.status === 'pending' ? 'قيد المراجعة' : request.status === 'approved' ? 'تمت الموافقة' : 'مرفوض'}
@@ -1450,24 +1829,20 @@ export default function AgentDashboard() {
               </div>
 
               <p className="agent-owner-request-summary">
-                شقة {n(request.property.area)} م² · الدور {request.property.floor} · {request.property.facing} · {formatPrice(request.property.price)}
+                {request.property.type && request.property.type !== 'apartment'
+                  ? `${request.property.typeLabel || 'أرض'} · ${request.property.regionLabel || `المنطقة ${displayZone(request.property.zone)}`} · مساحة ${n(request.property.area)} م² · ${formatPrice(request.property.price)}`
+                  : `شقة ${n(request.property.area)} م² · الدور ${request.property.floor || '—'} · ${request.property.facing || '—'} · ${formatPrice(request.property.price)}`}
               </p>
               {request.note && <p className="agent-owner-request-note">ملاحظة الوكيل: {request.note}</p>}
               {request.reviewedAt && <p className="agent-owner-request-note">تاريخ القرار: {request.reviewedAt}</p>}
 
               {request.status === 'pending' && (
-                <div className="agent-demo-admin-actions">
-                  <span>إجراءات الإدارة التجريبية</span>
-                  <div>
-                    <button type="button" className="agent-primary-button" onClick={() => handleOpenAdminReview(request)}>موافقة وإضافة بيانات المالك</button>
-                    <button type="button" className="agent-danger-button" onClick={() => handleRejectOwnerRequest(request.id)}>رفض الطلب التجريبي</button>
-                  </div>
-                </div>
+                <p className="agent-request-pending-note">تم إرسال الطلب إلى الإدارة. ستظهر بيانات المالك هنا في الرسائل عند الموافقة.</p>
               )}
 
               {request.status === 'approved' && (
                 <button type="button" className="agent-text-button agent-open-messages-button" onClick={() => navigateTo('messages')}>
-                  تم إرسال بيانات المالك — فتح الرسائل ←
+                  تمت الموافقة وإرسال بيانات المالك — فتح الرسائل ←
                 </button>
               )}
               {request.status === 'rejected' && <p className="agent-request-rejected-note">لم تتم مشاركة بيانات المالك. يمكنك تقديم طلب جديد من صفحة العقارات إذا لزم الأمر.</p>}
@@ -1475,38 +1850,7 @@ export default function AgentDashboard() {
           ))}
         </div>
       )}
-
-      {reviewRequestId && (
-        <div className="agent-modal-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setReviewRequestId(null)
-        }}>
-          <section className="agent-modal" role="dialog" aria-modal="true" aria-labelledby="owner-review-title">
-            <div className="agent-modal-header">
-              <div>
-                <p className="agent-modal-kicker">محاكاة إجراء الإدارة</p>
-                <h2 id="owner-review-title">الموافقة على طلب رقم المالك</h2>
-              </div>
-              <button type="button" className="agent-modal-close" aria-label="إغلاق" onClick={() => setReviewRequestId(null)}>×</button>
-            </div>
-            <p className="agent-modal-note">أدخل بيانات تجريبية أو بيانات مصرح لك بمشاركتها. بعد الموافقة، ستظهر هذه المعلومات للوكيل في صفحة الرسائل.</p>
-            <form onSubmit={handleApproveOwnerRequest}>
-              <label className="agent-modal-field">
-                <span>اسم المالك</span>
-                <input value={reviewOwnerName} onChange={(event) => setReviewOwnerName(event.target.value)} required placeholder="اسم المالك" />
-              </label>
-              <label className="agent-modal-field">
-                <span>رقم هاتف المالك</span>
-                <input value={reviewOwnerPhone} onChange={(event) => setReviewOwnerPhone(event.target.value)} required inputMode="tel" type="tel" placeholder="رقم الهاتف" />
-              </label>
-              {reviewError && <p className="agent-form-error" role="alert">{reviewError}</p>}
-              <div className="agent-modal-actions">
-                <button type="button" className="agent-secondary-button" onClick={() => setReviewRequestId(null)}>إلغاء</button>
-                <button type="submit" className="agent-primary-button">تأكيد الموافقة وإرسال البيانات للرسائل</button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
+      <p className="agent-properties-disclaimer">تتم مراجعة الطلبات من خلال لوحة الإدارة. لا تظهر بيانات المالك إلا بعد الموافقة.</p>
     </div>
   )
 
@@ -1541,8 +1885,9 @@ export default function AgentDashboard() {
                   <span className="agent-status-label completed">معتمد من الإدارة</span>
                 </div>
                 <div className="agent-owner-contact-number" dir="ltr">{message.ownerPhone}</div>
+                {message.ownerDataIsDemo && <p className="agent-demo-owner-data">بيانات توضيحية للاختبار فقط — لم تُربط قاعدة بيانات المُلّاك الفعلية بعد.</p>}
                 <div className="agent-owner-message-meta">
-                  <span>المنطقة {n(message.zone)}</span>
+                  <span>المنطقة {displayZone(message.zone)}</span>
                   <span>قطعة {n(message.building)}</span>
                   <span>{n(message.area)} م²</span>
                   <span>{message.receivedAt}</span>
@@ -1712,33 +2057,26 @@ export default function AgentDashboard() {
 
 
 
-          <button
+          <div className="agent-topbar-actions">
+            <button
+              className="agent-role-switch"
+              type="button"
+              onClick={onSwitchToAdmin}
+            >
+              <span aria-hidden="true">▣</span>
+              معاينة لوحة الإدارة
+            </button>
 
-            className="agent-theme-toggle"
-
-            onClick={() =>
-
-              setTheme((currentTheme) =>
-
-                currentTheme === 'light' ? 'dark' : 'light'
-
-              )
-
-            }
-
-            aria-label={`التبديل إلى ${
-
-              theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'
-
-            }`}
-
-          >
-
-            <span>{theme === 'light' ? '☾' : '☀'}</span>
-
-            <span>{theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}</span>
-
-          </button>
+            <button
+              className="agent-theme-toggle"
+              type="button"
+              onClick={() => setTheme((currentTheme) => currentTheme === 'light' ? 'dark' : 'light')}
+              aria-label={`التبديل إلى ${theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}`}
+            >
+              <span>{theme === 'light' ? '☾' : '☀'}</span>
+              <span>{theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}</span>
+            </button>
+          </div>
 
         </header>
 
@@ -1748,10 +2086,11 @@ export default function AgentDashboard() {
 
           {activePage === 'dashboard' && renderDashboard()}
           {activePage === 'properties' && renderProperties()}
+          {activePage === 'addProperty' && renderAddProperty()}
           {activePage === 'requests' && renderRequests()}
           {activePage === 'messages' && renderMessages()}
           {activePage === 'tasks' && renderTasks()}
-          {!['dashboard', 'properties', 'requests', 'messages', 'tasks'].includes(activePage) && renderOtherPage()}
+          {!['dashboard', 'properties', 'addProperty', 'requests', 'messages', 'tasks'].includes(activePage) && renderOtherPage()}
 
         </div>
 

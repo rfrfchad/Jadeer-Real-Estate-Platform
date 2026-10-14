@@ -2177,7 +2177,7 @@ html:has(.agent-dashboard.dark)::-webkit-scrollbar-thumb {
 
 .agent-property-filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(210px, 1.35fr) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(210px, 1.35fr) auto;
   gap: 12px;
   align-items: end;
   margin-top: 15px;
@@ -3065,4 +3065,159 @@ html:has(.agent-dashboard.dark)::-webkit-scrollbar-thumb {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* Shared workflow: preview switch to the Admin dashboard */
+.agent-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.agent-role-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 37px;
+  padding: 8px 11px;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-card);
+  color: var(--dash-text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color .35s ease, color .35s ease, border-color .35s ease, transform .2s ease;
+}
+
+.agent-role-switch:hover {
+  background: var(--dash-soft);
+  transform: translateY(-1px);
+}
+
+.agent-request-pending-note {
+  margin: 16px 0 0;
+  padding: 11px 12px;
+  border-inline-start: 3px solid #9b8050;
+  background: var(--dash-soft);
+  color: var(--dash-muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.agent-demo-owner-data {
+  margin: 7px 0 0;
+  color: var(--dash-muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+@media (max-width: 620px) {
+  .agent-topbar-actions { gap: 6px; }
+  .agent-role-switch { min-height: 35px; padding: 7px 8px; font-size: 10px; }
+}
+
+
+/* New-property submission page: Arabic RTL form cards */
+.agent-add-property-page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+.agent-property-type-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.agent-property-type-picker button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--dash-border);
+  background: var(--dash-card);
+  color: var(--dash-text);
+  text-align: start;
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .3s ease, transform .2s ease;
+}
+.agent-property-type-picker button > span {
+  display: grid;
+  width: 35px;
+  height: 35px;
+  place-items: center;
+  background: var(--dash-soft);
+  color: var(--dash-accent);
+  font-size: 20px;
+}
+.agent-property-type-picker button strong { font-size: 13px; font-weight: 600; }
+.agent-property-type-picker button small { color: var(--dash-muted); font-size: 10px; line-height: 1.8; }
+.agent-property-type-picker button:hover { transform: translateY(-2px); border-color: #9eafa0; }
+.agent-property-type-picker button.active { border-color: var(--agent-olive); background: var(--dash-soft); box-shadow: inset 0 -3px 0 var(--agent-olive); }
+.agent-dashboard.dark .agent-property-type-picker button.active { border-color: #a9bba9; box-shadow: inset 0 -3px 0 #a9bba9; }
+.agent-property-form { display: flex; flex-direction: column; gap: 16px; }
+.agent-form-section { padding: 22px; border: 1px solid var(--dash-border); background: var(--dash-card); color: var(--dash-text); transition: background-color .5s ease, border-color .5s ease, color .5s ease; }
+.agent-form-section-title { display: flex; align-items: center; gap: 12px; padding-bottom: 17px; margin-bottom: 20px; border-bottom: 1px solid var(--dash-border); }
+.agent-form-section-title > span { display: grid; flex: 0 0 36px; width: 36px; height: 36px; place-items: center; background: var(--dash-soft); color: var(--dash-accent); font-size: 12px; font-weight: 600; }
+.agent-form-section-title h2 { margin: 0; color: var(--dash-text); font-size: 15px; font-weight: 600; }
+.agent-form-section-title p { margin: 5px 0 0; color: var(--dash-muted); font-size: 11px; line-height: 1.8; }
+.agent-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 16px; }
+.agent-form-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: var(--dash-text); font-size: 11px; }
+.agent-form-field > span { font-weight: 500; line-height: 1.7; }
+.agent-form-field > span b { color: #9a3d38; font-weight: 600; }
+.agent-form-field input,
+.agent-form-field select,
+.agent-form-field textarea {
+  width: 100%; min-width: 0; min-height: 43px; padding: 10px 12px;
+  border: 1px solid var(--dash-border); border-radius: 4px;
+  outline: none; background: var(--dash-bg); color: var(--dash-text);
+  font: inherit; font-size: 12px; text-align: start;
+  transition: background-color .4s ease, color .4s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.agent-form-field textarea { min-height: 76px; resize: vertical; line-height: 1.8; }
+.agent-form-field input::placeholder,
+.agent-form-field textarea::placeholder { color: var(--dash-muted); opacity: .85; }
+.agent-form-field input:focus,
+.agent-form-field select:focus,
+.agent-form-field textarea:focus { border-color: var(--dash-accent); box-shadow: 0 0 0 2px rgba(25, 46, 38, .07); }
+.agent-dashboard.dark .agent-form-field input:focus,
+.agent-dashboard.dark .agent-form-field select:focus,
+.agent-dashboard.dark .agent-form-field textarea:focus { box-shadow: 0 0 0 2px rgba(220, 231, 221, .08); }
+.agent-form-field-wide { grid-column: 1 / -1; }
+.agent-form-calculated { display: flex; align-items: center; min-height: 43px; padding: 10px 12px; border: 1px dashed var(--dash-border); background: var(--dash-soft); color: var(--dash-accent); font-size: 12px; font-weight: 600; line-height: 1.8; }
+.agent-form-feedback { padding: 12px 14px; border: 1px solid var(--dash-border); font-size: 12px; line-height: 1.8; }
+.agent-form-feedback.error { border-color: #e8cecc; background: #f6e8e7; color: #8e3434; }
+.agent-form-feedback.success { border-color: #cbdacb; background: #e9f0e8; color: #294c32; }
+.agent-property-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 19px; border: 1px solid var(--dash-border); background: var(--dash-card); }
+.agent-property-submit-row p { margin: 0; max-width: 560px; color: var(--dash-muted); font-size: 11px; line-height: 1.9; }
+.agent-property-submit-row .agent-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+.agent-submitted-properties-section { margin-top: 30px; }
+.agent-submitted-properties-section .agent-section-header { align-items: flex-start; }
+.agent-property-submission-list { display: flex; flex-direction: column; gap: 10px; }
+.agent-submitted-property-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 17px 19px; }
+.agent-submitted-property-card h3 { margin: 0 0 7px; color: var(--dash-text); font-size: 13px; font-weight: 600; }
+.agent-submitted-property-card p { margin: 5px 0 0; color: var(--dash-muted); font-size: 11px; line-height: 1.8; }
+.agent-submitted-property-card small { display: block; margin-top: 7px; color: var(--dash-muted); font-size: 10px; }
+.agent-submission-rejection { color: #9a3d38 !important; }
+.agent-listing-map-placeholder { display: flex; height: 100%; min-height: 172px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; background: var(--dash-soft); color: var(--dash-muted); text-align: center; }
+.agent-listing-map-placeholder span { color: var(--dash-accent); font-size: 32px; }
+.agent-listing-map-placeholder strong { color: var(--dash-text); font-size: 13px; }
+.agent-listing-map-placeholder small { font-size: 10px; }
+
+@media (max-width: 850px) {
+  .agent-property-type-picker { grid-template-columns: 1fr; }
+  .agent-property-type-picker button { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; column-gap: 11px; }
+  .agent-property-type-picker button > span { grid-row: span 2; }
+  .agent-property-type-picker button small { grid-column: 2; }
+}
+@media (max-width: 620px) {
+  .agent-form-section { padding: 16px; }
+  .agent-form-grid { grid-template-columns: 1fr; }
+  .agent-form-field-wide { grid-column: auto; }
+  .agent-property-submit-row { align-items: stretch; flex-direction: column; }
+  .agent-property-submit-row .agent-primary-button { width: 100%; white-space: normal; }
+  .agent-submitted-property-card { align-items: stretch; flex-direction: column; }
 }
