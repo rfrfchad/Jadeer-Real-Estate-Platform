@@ -1,0 +1,11 @@
+JADEER GOLDEN SQUARE PLOT MAP AUDIT
+Generated from vector text coordinates in the supplied PDF; no OCR was used.
+
+Unique plot numbers found: 1538
+Expected number range: 1-1539
+Missing labels: [299]
+Duplicated labels: {'295': 2}
+
+IMPORTANT: plot 299 does not have a detected label in the supplied map, and plot 295 appears twice.
+The first 295 label (adjacent to 294 and 296) is used for plot-295.webp. The second 295 crop is preserved as plot-295-duplicate-2.webp for review.
+Do not automatically treat the duplicate 295 as 299 until the source map is verified. Entering 299 will show a map-not-found placeholder instead of a falsely labelled crop.

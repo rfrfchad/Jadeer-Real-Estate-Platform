@@ -318,6 +318,57 @@ const displayZone = (value) => {
   return /^\d+(\.\d+)?$/.test(text) ? n(Number(text)) : text
 }
 
+const normalizeMapDigits = (value) => String(value ?? '')
+  .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+  .trim()
+
+const goldenSquareZones = ['14', '21', '22', '29']
+
+// Plot thumbnails are keyed by the exact plot number visible on the supplied map.
+// Zone 299 is intentionally excluded because the PDF labels 295 twice and has no 299 label.
+const getPlotMapSrc = (property) => {
+  if (!property || property.type === 'beitWatan') return null
+  const zone = normalizeMapDigits(property.zone)
+  const plotNumberText = normalizeMapDigits(property.building)
+  if (!goldenSquareZones.includes(zone)) return null
+  if (!/^\d+$/.test(plotNumberText)) return null
+  const plotNumber = Number(plotNumberText)
+  if (plotNumber < 1 || plotNumber > 1539 || plotNumber === 299) return null
+  return `/maps/plots/plot-${plotNumber}.webp`
+}
+
+const getPlotMapUnavailableMessage = (property) => {
+  if (property?.type === 'beitWatan') return 'ستُضاف خريطة بيت الوطن المناسبة لاحقًا.'
+  const zone = normalizeMapDigits(property?.zone)
+  const plotNumber = normalizeMapDigits(property?.building)
+  if (!goldenSquareZones.includes(zone)) return 'لا تتوفر خريطة مرجعية لهذه المنطقة حاليًا.'
+  if (plotNumber === '299') return 'رقم القطعة ٢٩٩ غير ظاهر في الخريطة المرفقة؛ يلزم مراجعة ترقيم الخريطة.'
+  return 'لا تتوفر صورة مطابقة لرقم القطعة في الخريطة الحالية.'
+}
+
+function PlotMapPreview({ property }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const src = getPlotMapSrc(property)
+  if (!src || imageFailed) {
+    return (
+      <div className="agent-listing-map-placeholder">
+        <span aria-hidden="true">⌖</span>
+        <strong>{property?.type === 'beitWatan' ? 'خريطة بيت الوطن' : 'خريطة موقع القطعة'}</strong>
+        <small>{getPlotMapUnavailableMessage(property)}</small>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)} مع تحديد رقم القطعة`}
+      loading="lazy"
+      onError={() => setImageFailed(true)}
+    />
+  )
+}
+
 const blankPropertyForm = () => ({
   zone: '14', zoneOther: '', pieceNumber: '', floor: 'الأرضي', area: '', facing: 'أمامي يمين',
   finish: 'نص تشطيب', finishOther: '', facadeFinish: 'خلصانة', facadeOther: '', features: '', basement: 'شامل بدروم', basementShare: '',
@@ -958,7 +1009,7 @@ export default function AgentDashboard({
         <div className="agent-page-header">
           <div>
             <h1>العقارات المتاحة</h1>
-            <p>ابحث في الشقق المتاحة حسب المنطقة والعمارة والدور والتشطيب.</p>
+            <p>ابحث في العقارات المتاحة حسب المنطقة ورقم القطعة والدور والتشطيب.</p>
           </div>
           <span className="agent-property-total">{n(filteredProperties.length)} من {n(allProperties.length)} عقار</span>
         </div>
@@ -972,7 +1023,7 @@ export default function AgentDashboard({
                 type="search"
                 value={propertySearch}
                 onChange={(event) => setPropertySearch(event.target.value)}
-                placeholder="ابحث برقم العمارة أو المنطقة أو السعر أو المميزات..."
+                placeholder="ابحث برقم القطعة أو المنطقة أو السعر أو المميزات..."
                 aria-label="ابحث في العقارات"
               />
             </span>
@@ -1084,27 +1135,7 @@ export default function AgentDashboard({
               property.type && property.type !== 'apartment' ? (
                 <article className="agent-card agent-listing-card" key={property.id}>
                   <div className="agent-listing-map">
-                    {property.type === 'beitWatan' ? (
-                      <div className="agent-listing-map-placeholder">
-                        <span aria-hidden="true">⌖</span>
-                        <strong>خريطة بيت الوطن</strong>
-                        <small>ستُضاف الخريطة المناسبة لاحقًا</small>
-                      </div>
-                    ) : (
-                      <img
-                        src={`/maps/zone-${property.zone}-building-${property.building}.png`}
-                        alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)}`}
-                        loading="lazy"
-                        onError={(event) => {
-                          if (event.currentTarget.dataset.fallback !== 'true') {
-                            event.currentTarget.dataset.fallback = 'true'
-                            event.currentTarget.src = '/maps/golden-square-map.png'
-                          } else {
-                            event.currentTarget.style.display = 'none'
-                          }
-                        }}
-                      />
-                    )}
+                    <PlotMapPreview property={property} />
                     <span className={`agent-map-zone zone-${property.zone}`}>{property.type === 'beitWatan' ? 'بيت الوطن' : `المنطقة ${displayZone(property.zone)}`}</span>
                     <span className="agent-map-building">القطعة {displayZone(property.building)}</span>
                     <span className="agent-map-caption">موقع العقار</span>
@@ -1156,21 +1187,9 @@ export default function AgentDashboard({
               ) : (
               <article className="agent-card agent-listing-card" key={property.id}>
                 <div className="agent-listing-map">
-                  <img
-                    src={`/maps/zone-${property.zone}-building-${property.building}.png`}
-                    alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والعمارة ${displayZone(property.building)} مع تحديد رقم العمارة`}
-                    loading="lazy"
-                    onError={(event) => {
-                      if (event.currentTarget.dataset.fallback !== 'true') {
-                        event.currentTarget.dataset.fallback = 'true'
-                        event.currentTarget.src = '/maps/golden-square-map.png'
-                      } else {
-                        event.currentTarget.style.display = 'none'
-                      }
-                    }}
-                  />
+                  <PlotMapPreview property={property} />
                   <span className={`agent-map-zone zone-${property.zone}`}>المنطقة {displayZone(property.zone)}</span>
-                  <span className="agent-map-building">العمارة {displayZone(property.building)}</span>
+                  <span className="agent-map-building">القطعة {displayZone(property.building)}</span>
                   <span className="agent-map-caption">الموقع على الخريطة</span>
                 </div>
 
