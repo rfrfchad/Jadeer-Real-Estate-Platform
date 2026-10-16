@@ -80,10 +80,27 @@
 .admin-stat-card { padding: 19px 20px; }
 .admin-stat-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
 .admin-stat-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 6px; background: var(--admin-soft); color: var(--admin-olive); font-size: 17px; }
-.admin-dashboard.dark .admin-stat-icon { color: #dce7dd; }
+.admin-dashboard.dark .admin-stat-icon {
+  background: #2a362e;
+  color: #e2ece4;
+}
 .admin-stat-icon.pending-icon { background: #f7f0e4; color: #785d31; }
 .admin-stat-icon.approved-icon { background: #e9f0e8; color: #294c32; }
 .admin-stat-icon.rejected-icon { background: #f6e8e7; color: #8e3434; }
+
+/* Keep the summary icons readable in dark mode: tinted dark tile + bright icon. */
+.admin-dashboard.dark .admin-stat-icon.pending-icon {
+  background: #403629;
+  color: #efd5a4;
+}
+.admin-dashboard.dark .admin-stat-icon.approved-icon {
+  background: #283b2c;
+  color: #bde1bd;
+}
+.admin-dashboard.dark .admin-stat-icon.rejected-icon {
+  background: #3e2928;
+  color: #efb8b4;
+}
 .admin-stat-card > strong { display: block; margin-top: 18px; color: var(--admin-text); font-size: 29px; font-weight: 600; }
 .admin-stat-card > p { margin: 6px 0 0; color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
 .admin-section { margin-top: 30px; }
@@ -193,9 +210,7 @@
   .admin-request-actions > div { width: 100%; }
   .admin-primary-button, .admin-danger-button { flex: 1 1 auto; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .admin-dashboard, .admin-dashboard * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
-}
+
 
 
 /* Agent-submitted property review queue */
@@ -221,4 +236,177 @@
   .admin-property-submission-actions { align-items: stretch; flex-direction: column; }
   .admin-property-submission-actions > div { width: 100%; }
   .admin-rejection-reason { max-width: none; }
+}
+
+
+/* Admin attendance management */
+.admin-attendance-stats { margin-bottom: 28px; }
+.admin-attendance-section { margin-top: 28px; }
+.admin-section-title { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 15px; }
+.admin-section-title h2 { margin: 0; color: var(--admin-text); font-size: 17px; }
+.admin-section-title p { margin: 6px 0 0; color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
+.admin-attendance-list { display: flex; flex-direction: column; gap: 13px; }
+.admin-attendance-card { padding: 20px; }
+.admin-attendance-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.admin-attendance-card-header h2 { margin: 0; color: var(--admin-text); font-size: 15px; }
+.admin-attendance-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.admin-attendance-details > div { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 12px; border: 1px solid var(--admin-border); background: var(--admin-bg); }
+.admin-attendance-details span { color: var(--admin-muted); font-size: 10px; }
+.admin-attendance-details strong { color: var(--admin-text); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.admin-attendance-details bdi { unicode-bidi: isolate; }
+.admin-attendance-finalize { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--admin-border); }
+.admin-attendance-finalize p { margin: 0; color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
+.admin-attendance-disclaimer { margin: 18px 0 0; color: var(--admin-muted); font-size: 11px; line-height: 1.9; }
+@media (max-width: 1000px) { .admin-attendance-details { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) {
+  .admin-attendance-card { padding: 15px; }
+  .admin-attendance-card-header { flex-direction: column; }
+  .admin-attendance-details { grid-template-columns: 1fr; }
+  .admin-attendance-finalize { align-items: stretch; flex-direction: column; }
+  .admin-attendance-finalize .admin-primary-button { width: 100%; }
+}
+
+/* Admin attendance: date-based daily overview and expandable agent details */
+.admin-attendance-toolbar {
+  display: grid;
+  grid-template-columns: minmax(190px, .8fr) minmax(240px, 1.4fr) minmax(170px, .7fr);
+  gap: 12px;
+  padding: 15px;
+  margin-bottom: 16px;
+}
+.admin-attendance-date-field,
+.admin-attendance-search-field,
+.admin-attendance-status-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  color: var(--admin-muted);
+  font-size: 10px;
+}
+.admin-attendance-date-field input,
+.admin-attendance-search-field input,
+.admin-attendance-status-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 41px;
+  padding: 9px 11px;
+  border: 1px solid var(--admin-border);
+  border-radius: 3px;
+  outline: none;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-size: 12px;
+}
+.admin-attendance-date-field input:focus,
+.admin-attendance-search-field input:focus,
+.admin-attendance-status-field select:focus {
+  border-color: var(--admin-olive);
+}
+.admin-attendance-selected-date {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 13px;
+  color: var(--admin-muted);
+  font-size: 11px;
+}
+.admin-attendance-selected-date strong { color: var(--admin-text); font-size: 13px; font-weight: 600; }
+.admin-attendance-table-wrap { overflow-x: auto; }
+.admin-attendance-table { width: 100%; min-width: 790px; border-collapse: collapse; text-align: right; }
+.admin-attendance-table th,
+.admin-attendance-table td { padding: 14px 13px; border-bottom: 1px solid var(--admin-border); vertical-align: middle; }
+.admin-attendance-table th { background: var(--admin-soft); color: var(--admin-muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.admin-attendance-table td { color: var(--admin-text); font-size: 11px; }
+.admin-attendance-table tbody tr:last-child td { border-bottom: 0; }
+.admin-attendance-table tbody tr { transition: background-color .2s ease; }
+.admin-attendance-table tbody tr:hover,
+.admin-attendance-table tbody tr.selected-row { background: var(--admin-soft); }
+.admin-attendance-table td:first-child strong { display: block; font-size: 12px; font-weight: 600; }
+.admin-attendance-table td:first-child small { display: block; margin-top: 4px; color: var(--admin-muted); font-size: 9px; direction: ltr; text-align: right; }
+.admin-attendance-table bdi { white-space: nowrap; unicode-bidi: isolate; }
+.admin-attendance-detail-button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--admin-border); border-radius: 3px; background: var(--admin-card); color: var(--admin-text); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.admin-attendance-detail-button:hover { border-color: var(--admin-olive); background: var(--admin-soft); }
+.admin-attendance-detail-button span { font-size: 14px; line-height: 1; }
+.admin-attendance-expanded { margin-top: 20px; padding: 22px; }
+.admin-attendance-expanded-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 17px; border-bottom: 1px solid var(--admin-border); }
+.admin-attendance-expanded-heading h2 { margin: 5px 0 5px; color: var(--admin-text); font-size: 18px; }
+.admin-attendance-expanded-heading p { margin: 0; color: var(--admin-muted); font-size: 11px; }
+.admin-attendance-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 17px; }
+.admin-attendance-detail-grid > div { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; padding: 13px; border: 1px solid var(--admin-border); background: var(--admin-bg); }
+.admin-attendance-detail-grid > div > span { color: var(--admin-muted); font-size: 10px; }
+.admin-attendance-detail-grid > div > strong { color: var(--admin-text); font-size: 12px; overflow-wrap: anywhere; }
+.admin-attendance-detail-grid .admin-status { align-self: flex-start; font-weight: 500; }
+.admin-attendance-targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 13px; }
+.admin-attendance-target { padding: 15px; border: 1px solid var(--admin-border); background: var(--admin-card); }
+.admin-attendance-target > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--admin-muted); font-size: 11px; }
+.admin-attendance-target > div:first-child strong { color: var(--admin-text); font-size: 13px; }
+.admin-attendance-progress { height: 7px; margin-top: 12px; overflow: hidden; background: var(--admin-soft); }
+.admin-attendance-progress > span { display: block; height: 100%; background: #789078; transition: width .3s ease; }
+.admin-attendance-target small { display: block; margin-top: 8px; color: var(--admin-muted); font-size: 10px; }
+.admin-attendance-activity { margin-top: 24px; }
+.admin-attendance-activity .admin-section-title { align-items: center; }
+.admin-attendance-activity .admin-section-title h3 { margin: 0; color: var(--admin-text); font-size: 14px; }
+.admin-attendance-no-activity { padding: 16px; border: 1px dashed var(--admin-border); color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
+.admin-attendance-property-activity-list { display: flex; flex-direction: column; gap: 8px; }
+.admin-attendance-property-activity-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px; border: 1px solid var(--admin-border); background: var(--admin-bg); }
+.admin-attendance-property-activity-list article > div { min-width: 0; }
+.admin-attendance-property-activity-list strong { display: block; color: var(--admin-text); font-size: 11px; }
+.admin-attendance-property-activity-list small { display: block; margin-top: 5px; color: var(--admin-muted); font-size: 10px; }
+.admin-attendance-expanded > .admin-attendance-finalize { margin-top: 18px; }
+
+@media (max-width: 1000px) {
+  .admin-attendance-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-attendance-status-field { grid-column: 1 / -1; }
+  .admin-attendance-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .admin-attendance-toolbar { grid-template-columns: 1fr; }
+  .admin-attendance-status-field { grid-column: auto; }
+  .admin-attendance-selected-date { align-items: flex-start; flex-direction: column; }
+  .admin-attendance-expanded { padding: 15px; }
+  .admin-attendance-expanded-heading { flex-direction: column; }
+  .admin-attendance-detail-grid,
+  .admin-attendance-targets { grid-template-columns: 1fr; }
+  .admin-attendance-property-activity-list article { align-items: flex-start; flex-direction: column; }
+}
+
+
+/* Internal staff messaging */
+.admin-messages-page { max-width: 1180px; margin: 0 auto; }
+.admin-staff-chat { overflow: hidden; }
+.admin-staff-chat-header { display: flex; align-items: center; gap: 12px; padding: 16px 19px; border-bottom: 1px solid var(--admin-border); background: var(--admin-card); }
+.admin-staff-chat-avatar { display: grid; flex: 0 0 40px; width: 40px; height: 40px; place-items: center; border-radius: 50%; background: var(--admin-soft); color: var(--admin-olive); font-size: 15px; font-weight: 600; }
+.admin-dashboard.dark .admin-staff-chat-avatar { color: #dce7dd; }
+.admin-staff-chat-header > div:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.admin-staff-chat-header strong { color: var(--admin-text); font-size: 12px; }
+.admin-staff-chat-header > div:nth-child(2) span { color: var(--admin-muted); font-size: 10px; }
+.admin-staff-chat-thread { display: flex; flex-direction: column; gap: 12px; min-height: 250px; max-height: 500px; overflow-y: auto; padding: 20px; background: var(--admin-bg); }
+.admin-staff-chat-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; text-align: center; }
+.admin-staff-chat-empty > span { display: grid; width: 42px; height: 42px; margin-bottom: 10px; place-items: center; border-radius: 50%; background: var(--admin-soft); color: var(--admin-olive); font-size: 19px; }
+.admin-staff-chat-empty strong { color: var(--admin-text); font-size: 12px; }
+.admin-staff-chat-empty p { max-width: 400px; margin: 6px 0 0; color: var(--admin-muted); font-size: 11px; line-height: 1.8; }
+.admin-chat-bubble { width: fit-content; max-width: min(78%, 600px); padding: 11px 13px; border: 1px solid var(--admin-border); background: var(--admin-card); color: var(--admin-text); box-shadow: 0 1px 2px rgba(15, 30, 20, .025); }
+.admin-chat-bubble.mine { align-self: flex-start; border-color: #cad7ce; background: #eaf0eb; color: #24352d; }
+.admin-dashboard.dark .admin-chat-bubble.mine { border-color: #405447; background: #2a3a30; color: #f2f4f0; }
+.admin-chat-bubble.received { align-self: flex-end; }
+.admin-chat-bubble-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.admin-chat-bubble-meta strong { font-size: 10px; font-weight: 600; }
+.admin-chat-bubble-meta time { color: var(--admin-muted); font-size: 9px; }
+.admin-chat-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.9; }
+.admin-staff-chat-composer { display: flex; align-items: flex-end; gap: 10px; padding: 14px; border-top: 1px solid var(--admin-border); background: var(--admin-card); }
+.admin-staff-chat-composer textarea { flex: 1; min-width: 0; min-height: 43px; max-height: 130px; resize: vertical; padding: 11px 12px; border: 1px solid var(--admin-border); border-radius: 5px; outline: none; background: var(--admin-bg); color: var(--admin-text); font: inherit; font-size: 12px; line-height: 1.7; }
+.admin-staff-chat-composer textarea:focus { border-color: var(--admin-olive); }
+.admin-dashboard.dark .admin-staff-chat-composer textarea:focus { border-color: #dce7dd; }
+.admin-staff-chat-composer .admin-primary-button { min-height: 42px; white-space: nowrap; }
+.admin-staff-chat-composer .admin-primary-button:disabled { opacity: .45; cursor: not-allowed; }
+.admin-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 620px) {
+  .admin-staff-chat-header { align-items: flex-start; flex-wrap: wrap; padding: 13px; }
+  .admin-staff-chat-header .admin-status { margin-inline-start: 52px; }
+  .admin-staff-chat-thread { padding: 13px; }
+  .admin-chat-bubble { max-width: 92%; }
+  .admin-staff-chat-composer { align-items: stretch; flex-direction: column; padding: 11px; }
+  .admin-staff-chat-composer .admin-primary-button { width: 100%; }
 }

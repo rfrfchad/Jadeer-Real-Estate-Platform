@@ -30,6 +30,19 @@ const normalizeSearch = (value) =>
     .trim()
     .toLowerCase()
 
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const attendanceStatusText = (status) => {
+  if (status === 'present') return 'حاضر'
+  if (status === 'absent') return 'غائب'
+  return 'قيد العمل'
+}
+
 
 
 // Keeps "٠ / ٣٠٠" in a stable order inside RTL text.
@@ -318,55 +331,16 @@ const displayZone = (value) => {
   return /^\d+(\.\d+)?$/.test(text) ? n(Number(text)) : text
 }
 
-const normalizeMapDigits = (value) => String(value ?? '')
-  .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
-  .trim()
+// Map thumbnails are stored as public/maps/plots/plot-<number>.webp.
+// Accept Arabic-Indic digits in submitted plot numbers as well.
+const normalizePlotNumber = (value) =>
+  String(value ?? '')
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[^0-9]/g, '')
 
-const goldenSquareZones = ['14', '21', '22', '29']
-
-// Plot thumbnails are keyed by the exact plot number visible on the supplied map.
-// Zone 299 is intentionally excluded because the PDF labels 295 twice and has no 299 label.
-const getPlotMapSrc = (property) => {
-  if (!property || property.type === 'beitWatan') return null
-  const zone = normalizeMapDigits(property.zone)
-  const plotNumberText = normalizeMapDigits(property.building)
-  if (!goldenSquareZones.includes(zone)) return null
-  if (!/^\d+$/.test(plotNumberText)) return null
-  const plotNumber = Number(plotNumberText)
-  if (plotNumber < 1 || plotNumber > 1539 || plotNumber === 299) return null
-  return `/maps/plots/plot-${plotNumber}.webp`
-}
-
-const getPlotMapUnavailableMessage = (property) => {
-  if (property?.type === 'beitWatan') return 'ستُضاف خريطة بيت الوطن المناسبة لاحقًا.'
-  const zone = normalizeMapDigits(property?.zone)
-  const plotNumber = normalizeMapDigits(property?.building)
-  if (!goldenSquareZones.includes(zone)) return 'لا تتوفر خريطة مرجعية لهذه المنطقة حاليًا.'
-  if (plotNumber === '299') return 'رقم القطعة ٢٩٩ غير ظاهر في الخريطة المرفقة؛ يلزم مراجعة ترقيم الخريطة.'
-  return 'لا تتوفر صورة مطابقة لرقم القطعة في الخريطة الحالية.'
-}
-
-function PlotMapPreview({ property }) {
-  const [imageFailed, setImageFailed] = useState(false)
-  const src = getPlotMapSrc(property)
-  if (!src || imageFailed) {
-    return (
-      <div className="agent-listing-map-placeholder">
-        <span aria-hidden="true">⌖</span>
-        <strong>{property?.type === 'beitWatan' ? 'خريطة بيت الوطن' : 'خريطة موقع القطعة'}</strong>
-        <small>{getPlotMapUnavailableMessage(property)}</small>
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={src}
-      alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)} مع تحديد رقم القطعة`}
-      loading="lazy"
-      onError={() => setImageFailed(true)}
-    />
-  )
+const getPlotMapSrc = (plotNumber) => {
+  const normalized = normalizePlotNumber(plotNumber)
+  return normalized ? `/maps/plots/plot-${normalized}.webp` : '/maps/golden-square-map.png'
 }
 
 const blankPropertyForm = () => ({
@@ -384,14 +358,24 @@ export default function AgentDashboard({
   ownerRequests = [],
   setOwnerRequests = () => {},
   ownerMessages = [],
+  staffMessages = [],
+  onSendStaffMessage = () => {},
   propertySubmissionRequests = [],
+  attendanceRecords = [],
+  approvedApartmentsToday = 0,
+  onSharesProgressChange = () => {},
   onSubmitProperty = () => {},
   onSwitchToAdmin = () => {},
 }) {
 
   const [activePage, setActivePage] = useState('dashboard')
+  const [staffMessageDraft, setStaffMessageDraft] = useState('')
 
-  const [sharesDone, setSharesDone] = useState('')
+  const [sharesDone, setSharesDone] = useState(() => {
+    const today = getLocalDateKey()
+    const record = attendanceRecords.find((item) => item.agentId === 'agent-demo' && item.dateKey === today)
+    return record ? String(record.sharesDone || '') : ''
+  })
   const [propertySearch, setPropertySearch] = useState('')
   const [propertyZone, setPropertyZone] = useState('all')
   const [propertyFloor, setPropertyFloor] = useState('all')
@@ -476,9 +460,9 @@ export default function AgentDashboard({
 
 
 
-  // Only approved apartments saved to the database will count later.
+  // Count apartment submissions approved by Admin today. App.jsx derives this from shared request state.
 
-  const apartmentsAdded = 0
+  const apartmentsAdded = approvedApartmentsToday
 
 
 
@@ -671,6 +655,7 @@ export default function AgentDashboard({
     if (value === '') {
 
       setSharesDone('')
+      onSharesProgressChange(0)
 
       return
 
@@ -681,6 +666,7 @@ export default function AgentDashboard({
     if (/^\d+$/.test(value) && Number(value) <= dailySharesTarget) {
 
       setSharesDone(value)
+      onSharesProgressChange(Number(value))
 
     }
 
@@ -1009,7 +995,7 @@ export default function AgentDashboard({
         <div className="agent-page-header">
           <div>
             <h1>العقارات المتاحة</h1>
-            <p>ابحث في العقارات المتاحة حسب المنطقة ورقم القطعة والدور والتشطيب.</p>
+            <p>ابحث في الشقق المتاحة حسب المنطقة والعمارة والدور والتشطيب.</p>
           </div>
           <span className="agent-property-total">{n(filteredProperties.length)} من {n(allProperties.length)} عقار</span>
         </div>
@@ -1023,7 +1009,7 @@ export default function AgentDashboard({
                 type="search"
                 value={propertySearch}
                 onChange={(event) => setPropertySearch(event.target.value)}
-                placeholder="ابحث برقم القطعة أو المنطقة أو السعر أو المميزات..."
+                placeholder="ابحث برقم العمارة أو المنطقة أو السعر أو المميزات..."
                 aria-label="ابحث في العقارات"
               />
             </span>
@@ -1135,7 +1121,27 @@ export default function AgentDashboard({
               property.type && property.type !== 'apartment' ? (
                 <article className="agent-card agent-listing-card" key={property.id}>
                   <div className="agent-listing-map">
-                    <PlotMapPreview property={property} />
+                    {property.type === 'beitWatan' ? (
+                      <div className="agent-listing-map-placeholder">
+                        <span aria-hidden="true">⌖</span>
+                        <strong>خريطة بيت الوطن</strong>
+                        <small>ستُضاف الخريطة المناسبة لاحقًا</small>
+                      </div>
+                    ) : (
+                      <img
+                        src={getPlotMapSrc(property.building)}
+                        alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)}`}
+                        loading="lazy"
+                        onError={(event) => {
+                          if (event.currentTarget.dataset.fallback !== 'true') {
+                            event.currentTarget.dataset.fallback = 'true'
+                            event.currentTarget.src = '/maps/golden-square-map.png'
+                          } else {
+                            event.currentTarget.style.display = 'none'
+                          }
+                        }}
+                      />
+                    )}
                     <span className={`agent-map-zone zone-${property.zone}`}>{property.type === 'beitWatan' ? 'بيت الوطن' : `المنطقة ${displayZone(property.zone)}`}</span>
                     <span className="agent-map-building">القطعة {displayZone(property.building)}</span>
                     <span className="agent-map-caption">موقع العقار</span>
@@ -1187,9 +1193,21 @@ export default function AgentDashboard({
               ) : (
               <article className="agent-card agent-listing-card" key={property.id}>
                 <div className="agent-listing-map">
-                  <PlotMapPreview property={property} />
+                  <img
+                    src={getPlotMapSrc(property.building)}
+                    alt={`خريطة توضيحية للمنطقة ${displayZone(property.zone)} والقطعة ${displayZone(property.building)} مع تحديد رقم القطعة`}
+                    loading="lazy"
+                    onError={(event) => {
+                      if (event.currentTarget.dataset.fallback !== 'true') {
+                        event.currentTarget.dataset.fallback = 'true'
+                        event.currentTarget.src = '/maps/golden-square-map.png'
+                      } else {
+                        event.currentTarget.style.display = 'none'
+                      }
+                    }}
+                  />
                   <span className={`agent-map-zone zone-${property.zone}`}>المنطقة {displayZone(property.zone)}</span>
-                  <span className="agent-map-building">القطعة {displayZone(property.building)}</span>
+                  <span className="agent-map-building">العمارة {displayZone(property.building)}</span>
                   <span className="agent-map-caption">الموقع على الخريطة</span>
                 </div>
 
@@ -1600,6 +1618,8 @@ export default function AgentDashboard({
 
             step="1"
 
+            disabled={attendanceRecords.some((record) => record.agentId === 'agent-demo' && record.dateKey === getLocalDateKey() && record.finalized)}
+
             placeholder="أدخل عدد مشاركاتك"
 
             value={sharesDone}
@@ -1617,6 +1637,10 @@ export default function AgentDashboard({
             العدد الذي تُرسله.
 
           </p>
+
+          {attendanceRecords.some((record) => record.agentId === 'agent-demo' && record.dateKey === getLocalDateKey() && record.finalized) && (
+            <p className="agent-task-note">تم إغلاق يوم العمل؛ لا يمكن تعديل العدد في هذه الجلسة التجريبية.</p>
+          )}
 
 
 
@@ -1706,9 +1730,9 @@ export default function AgentDashboard({
 
           <p className="agent-task-note">
 
-            سيُربط هذا العدد بقاعدة البيانات لاحقًا. لن تُحتسب الشقق
+            يُحتسب العدد تلقائيًا من طلبات الشقق التي وافقت عليها الإدارة اليوم.
 
-            التي تنتظر الاعتماد أو غير المحفوظة.
+            لا تُحتسب الطلبات المعلقة أو المرفوضة، ولا تدخل الأراضي ضمن هذا الهدف.
 
           </p>
 
@@ -1873,52 +1897,208 @@ export default function AgentDashboard({
     </div>
   )
 
+  const handleSubmitStaffMessage = (event) => {
+    event.preventDefault()
+    const body = staffMessageDraft.trim()
+    if (!body) return
+    onSendStaffMessage(body)
+    setStaffMessageDraft('')
+  }
+
   const renderMessages = () => (
     <div className="agent-messages-page">
       <div className="agent-page-header">
         <div>
           <h1>الرسائل</h1>
-          <p>بيانات التواصل مع المُلّاك التي وافقت الإدارة على مشاركتها معك.</p>
+          <p>تواصل مع الإدارة وتابع بيانات الملاك التي وافقت الإدارة على مشاركتها معك.</p>
         </div>
-        <span className="agent-property-total">{n(ownerMessages.length)} محادثة</span>
       </div>
 
-      {ownerMessages.length === 0 ? (
-        <div className="agent-card agent-properties-empty">
-          <span className="agent-empty-icon">✉</span>
-          <h2>لا توجد رسائل حتى الآن</h2>
-          <p>عند موافقة الإدارة على طلب رقم المالك، ستظهر بياناته هنا مباشرة.</p>
-          <button type="button" className="agent-primary-button" onClick={() => navigateTo('properties')}>العودة إلى العقارات</button>
+      <section className="agent-message-section">
+        <div className="agent-section-header">
+          <div>
+            <h2>مراسلات العمل</h2>
+            <p>محادثة داخلية بين الوكيل والإدارة.</p>
+          </div>
+          <span className="agent-status-label">الإدارة</span>
         </div>
-      ) : (
-        <div className="agent-owner-message-list">
-          {ownerMessages.map((message) => (
-            <article className="agent-card agent-owner-message-card" key={message.id}>
-              <div className="agent-owner-message-avatar" aria-hidden="true">{message.ownerName.trim().charAt(0) || 'م'}</div>
-              <div className="agent-owner-message-content">
-                <div className="agent-owner-message-heading">
-                  <div>
-                    <h2>{message.ownerName}</h2>
-                    <p>{message.propertySummary}</p>
-                  </div>
-                  <span className="agent-status-label completed">معتمد من الإدارة</span>
-                </div>
-                <div className="agent-owner-contact-number" dir="ltr">{message.ownerPhone}</div>
-                {message.ownerDataIsDemo && <p className="agent-demo-owner-data">بيانات توضيحية للاختبار فقط — لم تُربط قاعدة بيانات المُلّاك الفعلية بعد.</p>}
-                <div className="agent-owner-message-meta">
-                  <span>المنطقة {displayZone(message.zone)}</span>
-                  <span>قطعة {n(message.building)}</span>
-                  <span>{n(message.area)} م²</span>
-                  <span>{message.receivedAt}</span>
-                </div>
+
+        <div className="agent-card agent-staff-chat">
+          <div className="agent-staff-chat-header">
+            <div className="agent-staff-chat-avatar" aria-hidden="true">إ</div>
+            <div>
+              <strong>مسؤول النظام</strong>
+              <span>مراسلات داخلية — تجريبية</span>
+            </div>
+          </div>
+
+          <div className="agent-staff-chat-thread" aria-live="polite">
+            {staffMessages.length === 0 ? (
+              <div className="agent-staff-chat-empty">
+                <span aria-hidden="true">✉</span>
+                <strong>لا توجد رسائل بعد</strong>
+                <p>يمكنك إرسال استفسار أو تحديث للإدارة من هنا.</p>
               </div>
-            </article>
-          ))}
+            ) : (
+              staffMessages.map((message) => {
+                const isMine = message.senderRole === 'agent'
+                return (
+                  <article
+                    key={message.id}
+                    className={`agent-chat-bubble ${isMine ? 'mine' : 'received'}`}
+                  >
+                    <div className="agent-chat-bubble-meta">
+                      <strong>{isMine ? 'أنت' : (message.senderName || 'مسؤول النظام')}</strong>
+                      <time>{message.sentAt}</time>
+                    </div>
+                    <p>{message.body}</p>
+                  </article>
+                )
+              })
+            )}
+          </div>
+
+          <form className="agent-staff-chat-composer" onSubmit={handleSubmitStaffMessage}>
+            <label className="agent-sr-only" htmlFor="agent-staff-message">اكتب رسالة للإدارة</label>
+            <textarea
+              id="agent-staff-message"
+              rows="2"
+              value={staffMessageDraft}
+              onChange={(event) => setStaffMessageDraft(event.target.value)}
+              placeholder="اكتب رسالتك للإدارة..."
+              maxLength={1500}
+            />
+            <button className="agent-primary-button" type="submit" disabled={!staffMessageDraft.trim()}>
+              إرسال الرسالة <span aria-hidden="true">↗</span>
+            </button>
+          </form>
         </div>
-      )}
-      <p className="agent-properties-disclaimer">هذا نموذج أولي داخل المتصفح؛ ستأتي الرسائل الفعلية من النظام بعد ربط حسابات الوكلاء والإدارة وقاعدة البيانات.</p>
+      </section>
+
+      <section className="agent-message-section">
+        <div className="agent-section-header">
+          <div>
+            <h2>بيانات المُلّاك المعتمدة</h2>
+            <p>تظهر بيانات المالك هنا فقط بعد موافقة الإدارة على طلبك.</p>
+          </div>
+          <span className="agent-property-total">{n(ownerMessages.length)} سجل</span>
+        </div>
+
+        {ownerMessages.length === 0 ? (
+          <div className="agent-card agent-properties-empty">
+            <span className="agent-empty-icon">✉</span>
+            <h2>لا توجد بيانات ملاك معتمدة</h2>
+            <p>عند الموافقة على طلب رقم المالك، ستظهر بيانات التواصل هنا مباشرة.</p>
+            <button type="button" className="agent-primary-button" onClick={() => navigateTo('properties')}>العودة إلى العقارات</button>
+          </div>
+        ) : (
+          <div className="agent-owner-message-list">
+            {ownerMessages.map((message) => (
+              <article className="agent-card agent-owner-message-card" key={message.id}>
+                <div className="agent-owner-message-avatar" aria-hidden="true">{(message.ownerName || 'م').trim().charAt(0) || 'م'}</div>
+                <div className="agent-owner-message-content">
+                  <div className="agent-owner-message-heading">
+                    <div>
+                      <h2>{message.ownerName}</h2>
+                      <p>{message.propertySummary}</p>
+                    </div>
+                    <span className="agent-status-label completed">معتمد من الإدارة</span>
+                  </div>
+                  <div className="agent-owner-contact-number" dir="ltr">{message.ownerPhone}</div>
+                  {message.ownerDataIsDemo && <p className="agent-demo-owner-data">بيانات توضيحية للاختبار فقط — لم تُربط قاعدة بيانات المُلّاك الفعلية بعد.</p>}
+                  <div className="agent-owner-message-meta">
+                    <span>المنطقة {displayZone(message.zone)}</span>
+                    <span>قطعة {n(message.building)}</span>
+                    <span>{n(message.area)} م²</span>
+                    <span>{message.receivedAt}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <p className="agent-properties-disclaimer">رسائل العمل وبيانات التواصل المعروضة هنا محفوظة في حالة تجريبية داخل المتصفح، وستُربط بحسابات الموظفين وقاعدة البيانات لاحقًا.</p>
     </div>
   )
+
+  const renderAttendance = () => {
+    const today = getLocalDateKey()
+    const todayRecord = attendanceRecords.find((record) => record.agentId === 'agent-demo' && record.dateKey === today)
+    const orderedRecords = [...attendanceRecords].sort((a, b) => String(b.dateKey).localeCompare(String(a.dateKey)))
+    const displayedApprovedApartments = todayRecord ? approvedApartmentsToday : 0
+
+    return (
+      <div className="agent-attendance-page">
+        <div className="agent-page-header">
+          <div>
+            <h1>الحضور والانصراف</h1>
+            <p>تابع تسجيل حضورك وسجل الأيام السابقة.</p>
+          </div>
+          <span className="agent-property-total">{todayRecord ? todayRecord.dateLabel : new Date().toLocaleDateString('ar-EG')}</span>
+        </div>
+
+        <section className="agent-attendance-overview">
+          <article className="agent-card agent-attendance-stat">
+            <span className="agent-attendance-stat-label">حالة اليوم</span>
+            <strong className={`agent-attendance-status ${todayRecord?.status || 'pending'}`}>
+              {todayRecord ? attendanceStatusText(todayRecord.status) : 'لم يُسجل بعد'}
+            </strong>
+            <small>{todayRecord?.finalized ? 'تم إغلاق اليوم' : 'الحضور التجريبي يُسجل عند فتح لوحة الوكيل'}</small>
+          </article>
+          <article className="agent-card agent-attendance-stat">
+            <span className="agent-attendance-stat-label">وقت الحضور</span>
+            <strong>{todayRecord?.checkInTime || '—'}</strong>
+            <small>يُسجل تلقائيًا في النموذج الأولي</small>
+          </article>
+          <article className="agent-card agent-attendance-stat">
+            <span className="agent-attendance-stat-label">وقت الانصراف</span>
+            <strong>{todayRecord?.checkOutTime || '—'}</strong>
+            <small>{todayRecord?.finalized ? 'تم تسجيل الانصراف' : 'يظهر بعد إنهاء اليوم من الإدارة'}</small>
+          </article>
+        </section>
+
+        <section className="agent-section">
+          <div className="agent-section-header">
+            <div><h2>متطلبات الحضور اليومي</h2><p>يجب إكمال الهدفين لاستيفاء الحضور اليومي.</p></div>
+          </div>
+          <div className="agent-card agent-attendance-requirements">
+            <div className="agent-attendance-requirement">
+              <div><span>المشاركات اليومية</span><strong><Fraction done={todayRecord?.sharesDone ?? sharesCount} total={dailySharesTarget} /></strong></div>
+              <div className="agent-task-progress"><div className="agent-task-progress-fill" style={{ width: `${Math.min(((todayRecord?.sharesDone ?? sharesCount) / dailySharesTarget) * 100, 100)}%` }} /></div>
+            </div>
+            <div className="agent-attendance-requirement">
+              <div><span>الشقق المعتمدة</span><strong><Fraction done={displayedApprovedApartments} total={apartmentsTarget} /></strong></div>
+              <div className="agent-task-progress"><div className="agent-task-progress-fill" style={{ width: `${Math.min((displayedApprovedApartments / apartmentsTarget) * 100, 100)}%` }} /></div>
+            </div>
+          </div>
+          <p className="agent-attendance-explainer">ملاحظة: تسجيل الدخول والإغلاق التلقائي في نهاية يوم العمل يحتاجان إلى ربط المصادقة والخادم. زر إنهاء اليوم في لوحة الإدارة يحاكي احتساب الحالة للاختبار فقط.</p>
+        </section>
+
+        <section className="agent-section">
+          <div className="agent-section-header"><div><h2>سجل الحضور</h2><p>السجلات المتاحة في جلسة الاختبار الحالية.</p></div></div>
+          {orderedRecords.length === 0 ? (
+            <div className="agent-card agent-properties-empty"><h2>لا توجد سجلات حضور</h2><p>سيظهر سجل اليوم عند فتح لوحة الوكيل.</p></div>
+          ) : (
+            <div className="agent-card agent-attendance-table-wrap">
+              <table className="agent-attendance-table">
+                <thead><tr><th>التاريخ</th><th>الحضور</th><th>الانصراف</th><th>المشاركات</th><th>الشقق المعتمدة</th><th>الحالة</th></tr></thead>
+                <tbody>{orderedRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td>{record.dateLabel}</td><td>{record.checkInTime || '—'}</td><td>{record.checkOutTime || '—'}</td>
+                    <td><Fraction done={record.sharesDone || 0} total={dailySharesTarget} /></td>
+                    <td><Fraction done={record.dateKey === today ? approvedApartmentsToday : record.approvedApartments || 0} total={apartmentsTarget} /></td>
+                    <td><span className={`agent-status-label ${record.status === 'present' ? 'completed' : record.status === 'absent' ? 'rejected' : 'pending'}`}>{attendanceStatusText(record.status)}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    )
+  }
 
   const renderOtherPage = () => (
 
@@ -2109,7 +2289,8 @@ export default function AgentDashboard({
           {activePage === 'requests' && renderRequests()}
           {activePage === 'messages' && renderMessages()}
           {activePage === 'tasks' && renderTasks()}
-          {!['dashboard', 'properties', 'addProperty', 'requests', 'messages', 'tasks'].includes(activePage) && renderOtherPage()}
+          {activePage === 'attendance' && renderAttendance()}
+          {!['dashboard', 'properties', 'addProperty', 'requests', 'messages', 'tasks', 'attendance'].includes(activePage) && renderOtherPage()}
 
         </div>
 

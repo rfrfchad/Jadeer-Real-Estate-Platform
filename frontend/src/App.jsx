@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import AgentDashboard from './AgentDashboard'
 import AdminDashboard from './AdminDashboard'
@@ -37,6 +37,28 @@ const demoOwnerDirectory = {
   '21-834-fourth': { name: 'مالك تجريبي لقطعة 834', phone: '010-XXX-XXXX' },
 }
 
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const makeAttendanceRecord = (date = new Date()) => ({
+  id: `agent-demo-${getLocalDateKey(date)}`,
+  agentId: 'agent-demo',
+  agentName: 'مستخدم الوكيل',
+  dateKey: getLocalDateKey(date),
+  dateLabel: date.toLocaleDateString('ar-EG'),
+  checkInTime: date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+  checkInTimestamp: date.toISOString(),
+  checkOutTime: '',
+  sharesDone: 0,
+  approvedApartments: 0,
+  status: 'in_progress',
+  finalized: false,
+})
+
 function App() {
   const [theme, setTheme] = useState('light')
   const [dashboardTheme, setDashboardTheme] = useState('light')
@@ -49,7 +71,68 @@ function App() {
   // Shared in-memory prototype state lets the Agent and Admin previews see the same requests/messages.
   const [ownerRequests, setOwnerRequests] = useState([])
   const [ownerMessages, setOwnerMessages] = useState([])
+  const [staffMessages, setStaffMessages] = useState([])
   const [propertySubmissionRequests, setPropertySubmissionRequests] = useState([])
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+
+  const todayDateKey = getLocalDateKey()
+  const approvedApartmentsToday = propertySubmissionRequests.filter((request) =>
+    request.type === 'apartment' && request.status === 'approved' && request.approvedDateKey === todayDateKey
+  ).length
+
+  // Frontend prototype: create one daily check-in when the Agent workspace is opened.
+  // The production version should create this record on authenticated server login.
+  useEffect(() => {
+    if (!showDashboard || workspaceRole !== 'agent') return
+    const now = new Date()
+    setAttendanceRecords((current) => {
+      const dateKey = getLocalDateKey(now)
+      const exists = current.some((record) => record.agentId === 'agent-demo' && record.dateKey === dateKey)
+      return exists ? current : [makeAttendanceRecord(now), ...current]
+    })
+  }, [showDashboard, workspaceRole])
+
+  function handleSharesProgressChange(value) {
+    const now = new Date()
+    const dateKey = getLocalDateKey(now)
+    setAttendanceRecords((current) => {
+      const exists = current.some((record) => record.agentId === 'agent-demo' && record.dateKey === dateKey)
+      if (!exists) return [{ ...makeAttendanceRecord(now), sharesDone: value }, ...current]
+      return current.map((record) =>
+        record.agentId === 'agent-demo' && record.dateKey === dateKey && !record.finalized
+          ? { ...record, sharesDone: value }
+          : record
+      )
+    })
+  }
+
+  function handleFinalizeAttendance(recordId) {
+    const recordToFinalize = attendanceRecords.find((record) => record.id === recordId)
+    if (!recordToFinalize || recordToFinalize.finalized) return
+
+    const dateKey = recordToFinalize.dateKey
+    const approvedApartments = propertySubmissionRequests.filter((request) =>
+      request.type === 'apartment' && request.status === 'approved' && request.approvedDateKey === dateKey
+    ).length
+    const sharesDone = Number(recordToFinalize.sharesDone || 0)
+    const isPresent = sharesDone >= 300 && approvedApartments >= 3
+    const now = new Date()
+
+    setAttendanceRecords((current) => current.map((record) =>
+      record.id === recordId
+        ? {
+            ...record,
+            sharesDone,
+            approvedApartments,
+            status: isPresent ? 'present' : 'absent',
+            finalized: true,
+            checkOutTime: now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            checkOutTimestamp: now.toISOString(),
+            finalizedAt: now.toLocaleString('ar-EG'),
+          }
+        : record
+    ))
+  }
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -117,23 +200,44 @@ function App() {
     setOwnerMessages((current) => [newMessage, ...current.filter((item) => item.requestId !== request.id)])
   }
 
+  function handleSendStaffMessage(senderRole, body) {
+    const messageBody = String(body ?? '').trim()
+    if (!messageBody) return
+
+    const now = new Date()
+    const message = {
+      id: `staff-message-${now.getTime()}-${staffMessages.length}`,
+      senderRole,
+      senderId: senderRole === 'admin' ? 'admin-demo' : 'agent-demo',
+      senderName: senderRole === 'admin' ? 'مسؤول النظام' : 'مستخدم الوكيل',
+      body: messageBody,
+      sentAt: now.toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }),
+      sentAtTimestamp: now.toISOString(),
+    }
+    setStaffMessages((current) => [...current, message])
+  }
+
   function handleSubmitProperty(submission) {
     const record = {
       id: `property-submission-${Date.now()}`,
       type: submission.type,
       data: submission.data,
+      agentId: 'agent-demo',
       agentName: 'مستخدم الوكيل',
       status: 'pending',
+      submittedDateKey: getLocalDateKey(),
       submittedAt: new Date().toLocaleString('ar-EG'),
     }
     setPropertySubmissionRequests((current) => [record, ...current])
   }
 
   function handleApprovePropertySubmission(requestId) {
-    const reviewedAt = new Date().toLocaleString('ar-EG')
+    const now = new Date()
+    const reviewedAt = now.toLocaleString('ar-EG')
+    const approvedDateKey = getLocalDateKey(now)
     setPropertySubmissionRequests((current) => current.map((request) =>
       request.id === requestId && request.status === 'pending'
-        ? { ...request, status: 'approved', reviewedAt, rejectionReason: '' }
+        ? { ...request, status: 'approved', reviewedAt, approvedDateKey, rejectionReason: '' }
         : request
     ))
   }
@@ -153,7 +257,11 @@ function App() {
       setTheme: setDashboardTheme,
       ownerRequests,
       ownerMessages,
+      staffMessages,
       propertySubmissionRequests,
+      attendanceRecords,
+      approvedApartmentsToday,
+      onFinalizeAttendance: handleFinalizeAttendance,
     }
 
     if (workspaceRole === 'admin') {
@@ -164,6 +272,7 @@ function App() {
           onRejectRequest={handleRejectOwnerRequest}
           onApprovePropertySubmission={handleApprovePropertySubmission}
           onRejectPropertySubmission={handleRejectPropertySubmission}
+          onSendStaffMessage={(body) => handleSendStaffMessage('admin', body)}
           onSwitchToAgent={() => setWorkspaceRole('agent')}
         />
       )
@@ -174,6 +283,8 @@ function App() {
         {...commonDashboardProps}
         setOwnerRequests={setOwnerRequests}
         onSubmitProperty={handleSubmitProperty}
+        onSharesProgressChange={handleSharesProgressChange}
+        onSendStaffMessage={(body) => handleSendStaffMessage('agent', body)}
         onSwitchToAdmin={() => setWorkspaceRole('admin')}
       />
     )
